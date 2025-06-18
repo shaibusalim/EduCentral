@@ -1,29 +1,26 @@
+
 "use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { BellRing, AlertTriangle, Info } from "lucide-react";
+import { BellRing, AlertTriangle, Info, PlusCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
+import type { NotificationItem, NotificationType } from '@/types';
+import { useAppContext } from "@/contexts/AppContext";
+import { AddNotificationDialog } from "./AddNotificationDialog";
+import type { NotificationFormData } from "./NotificationForm";
+import { useToast } from "@/hooks/use-toast";
 
-interface Notification {
-  id: string;
-  title: string;
-  description: string;
-  type: 'announcement' | 'alert' | 'info';
-  date: string;
-  read: boolean;
-}
-
-const mockNotifications: Notification[] = [
-  { id: '1', title: 'Upcoming School Closure', description: 'School will be closed on Oct 26th for a regional holiday.', type: 'alert', date: '2023-10-20', read: false },
-  { id: '2', title: 'Parent-Teacher Meeting Reminder', description: 'Scheduled for Nov 5th. Please confirm your attendance.', type: 'info', date: '2023-10-18', read: true },
-  { id: '3', title: 'New Sports Equipment Arrived!', description: 'Check out the new basketballs and footballs in the gym.', type: 'announcement', date: '2023-10-15', read: false },
-  { id: '4', title: 'Fee Payment Overdue', description: 'Your term fee payment is overdue. Please pay by Oct 30th.', type: 'alert', date: '2023-10-12', read: false },
-  { id: '5', title: 'Library Books Return', description: 'All borrowed library books must be returned by the end of this week.', type: 'info', date: '2023-10-10', read: true },
+const mockNotificationsData: NotificationItem[] = [
+  { id: '1', title: 'Upcoming School Closure', description: 'School will be closed on Oct 26th for a regional holiday.', type: 'alert', date: new Date(2023, 9, 20).toISOString(), read: false },
+  { id: '2', title: 'Parent-Teacher Meeting Reminder', description: 'Scheduled for Nov 5th. Please confirm your attendance.', type: 'info', date: new Date(2023, 9, 18).toISOString(), read: true },
+  { id: '3', title: 'New Sports Equipment Arrived!', description: 'Check out the new basketballs and footballs in the gym.', type: 'announcement', date: new Date(2023, 9, 15).toISOString(), read: false },
+  { id: '4', title: 'Fee Payment Overdue', description: 'Your term fee payment is overdue. Please pay by Oct 30th.', type: 'alert', date: new Date(2023, 9, 12).toISOString(), read: false },
+  { id: '5', title: 'Library Books Return', description: 'All borrowed library books must be returned by the end of this week.', type: 'info', date: new Date(2023, 9, 10).toISOString(), read: true },
 ];
 
-const NotificationIcon = ({ type }: { type: Notification['type'] }) => {
+const NotificationIcon = ({ type }: { type: NotificationType }) => {
   switch (type) {
     case 'announcement': return <BellRing className="h-5 w-5 text-primary" />;
     case 'alert': return <AlertTriangle className="h-5 w-5 text-destructive" />;
@@ -33,7 +30,9 @@ const NotificationIcon = ({ type }: { type: Notification['type'] }) => {
 };
 
 export function NotificationFeedClient() {
-  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
+  const [notifications, setNotifications] = useState<NotificationItem[]>(mockNotificationsData);
+  const { role } = useAppContext();
+  const { toast } = useToast();
 
   const markAsRead = (id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
@@ -43,6 +42,22 @@ export function NotificationFeedClient() {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
   
+  const handleAddNotification = (data: NotificationFormData) => {
+    const newNotification: NotificationItem = {
+      id: `notif-${Date.now().toString()}`,
+      title: data.title,
+      description: data.description,
+      type: data.type as NotificationType,
+      date: new Date().toISOString(),
+      read: false, 
+    };
+    setNotifications(prev => [newNotification, ...prev]);
+    toast({
+      title: "Notification Created",
+      description: `"${data.title}" has been posted.`,
+    });
+  };
+
   const unreadCount = notifications.filter(n => !n.read).length;
 
   return (
@@ -51,9 +66,18 @@ export function NotificationFeedClient() {
         <h2 className="text-2xl font-semibold text-primary">
           Notifications {unreadCount > 0 && <Badge variant="destructive" className="ml-2">{unreadCount} New</Badge>}
         </h2>
-        {unreadCount > 0 && (
-          <Button onClick={markAllAsRead} variant="outline" size="sm">Mark all as read</Button>
-        )}
+        <div className="flex items-center gap-2">
+          {role === 'admin' && (
+            <AddNotificationDialog onNotificationAdded={handleAddNotification}>
+              <Button className="bg-accent hover:bg-accent/90 text-accent-foreground">
+                <PlusCircle className="mr-2 h-4 w-4" /> Create Notification
+              </Button>
+            </AddNotificationDialog>
+          )}
+          {unreadCount > 0 && (
+            <Button onClick={markAllAsRead} variant="outline" size="sm">Mark all as read</Button>
+          )}
+        </div>
       </div>
       {notifications.length === 0 ? (
         <Card>

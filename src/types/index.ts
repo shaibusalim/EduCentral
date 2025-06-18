@@ -30,4 +30,15 @@ export interface SubjectItem {
   // Potentially add subjectCode or teacherId in the future
 }
 
+export type NotificationType = 'announcement' | 'alert' | 'info';
+
+export interface NotificationItem {
+  id: string;
+  title: string;
+  description: string;
+  type: NotificationType;
+  date: string; // ISO string format
+  read: boolean;
+}
+
 // Add other shared types here as needed
