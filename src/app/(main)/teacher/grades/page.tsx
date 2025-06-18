@@ -9,18 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { FileText, UploadCloud, Send } from 'lucide-react';
+import { FileText, UploadCloud, Send, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-
-interface MockClass {
-  id: string;
-  name: string;
-}
-
-interface MockStudent {
-  id: string;
-  name: string;
-}
+import type { ClassItem, Student } from '@/types';
+import { getClasses } from '@/services/classService';
+import { getStudents } from '@/services/studentService';
 
 interface StudentGradeData {
   studentId: string;
@@ -29,49 +22,71 @@ interface StudentGradeData {
   remarks: string;
 }
 
-const mockClasses: MockClass[] = [
-  { id: 'class1', name: 'Grade 10A - Mathematics' },
-  { id: 'class2', name: 'Grade 11B - Physics' },
-  { id: 'class3', name: 'Grade 9C - English' },
-];
-
-const mockStudentsByClass: Record<string, MockStudent[]> = {
-  class1: [
-    { id: 's101', name: 'Alice Smith' },
-    { id: 's102', name: 'Bob Johnson' },
-    { id: 's103', name: 'Charlie Brown' },
-  ],
-  class2: [
-    { id: 's201', name: 'Edward Nigma' },
-    { id: 's202', name: 'Fiona Gallagher' },
-  ],
-  class3: [
-    { id: 's301', name: 'Hannah Montana' },
-    { id: 's302', name: 'Iris West' },
-    { id: 's303', name: 'Jack Sparrow' },
-  ],
-};
-
 export default function EnterGradesPage() {
+  const [allClasses, setAllClasses] = React.useState<ClassItem[]>([]);
+  const [allStudents, setAllStudents] = React.useState<Student[]>([]);
+  
   const [selectedClassId, setSelectedClassId] = React.useState<string | null>(null);
   const [gradesData, setGradesData] = React.useState<StudentGradeData[]>([]);
-  const [isLoading, setIsLoading] = React.useState(false);
+  
+  const [isLoadingClasses, setIsLoadingClasses] = React.useState(true);
+  const [isLoadingStudentsState, setIsLoadingStudentsState] = React.useState(true); // Renamed to avoid conflict
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  
   const { toast } = useToast();
 
   React.useEffect(() => {
-    if (selectedClassId && mockStudentsByClass[selectedClassId]) {
+    const fetchInitialData = async () => {
+      setIsLoadingClasses(true);
+      setIsLoadingStudentsState(true);
+      try {
+        const [fetchedClasses, fetchedStudents] = await Promise.all([
+          getClasses(),
+          getStudents()
+        ]);
+        setAllClasses(fetchedClasses);
+        setAllStudents(fetchedStudents);
+      } catch (error) {
+        toast({
+          variant: "destructive",
+          title: "Failed to load initial data",
+          description: (error as Error).message || "Could not fetch classes or students.",
+        });
+      } finally {
+        setIsLoadingClasses(false);
+        setIsLoadingStudentsState(false);
+      }
+    };
+    fetchInitialData();
+  }, [toast]);
+
+  React.useEffect(() => {
+    if (selectedClassId && allClasses.length > 0 && allStudents.length > 0) {
+      const selectedClass = allClasses.find(c => c.id === selectedClassId);
+      if (!selectedClass) {
+        setGradesData([]);
+        return;
+      }
+
+      const gradeInClassName = selectedClass.name.match(/Grade\s*\d+/i);
+      const classGradeFilter = gradeInClassName ? gradeInClassName[0].toLowerCase() : null;
+
+      const studentsForClass = allStudents.filter(student => 
+        classGradeFilter ? student.grade.toLowerCase() === classGradeFilter : false
+      );
+      
       setGradesData(
-        mockStudentsByClass[selectedClassId].map(student => ({
+        studentsForClass.map(student => ({
           studentId: student.id,
-          studentName: student.name,
-          grade: '',
-          remarks: '',
+          studentName: `${student.firstName} ${student.lastName}`,
+          grade: '', // Existing grades would be fetched here in full implementation
+          remarks: '', // Existing remarks
         }))
       );
     } else {
       setGradesData([]);
     }
-  }, [selectedClassId]);
+  }, [selectedClassId, allClasses, allStudents]);
 
   const handleGradeChange = (studentId: string, value: string) => {
     setGradesData(prevData =>
@@ -109,20 +124,27 @@ export default function EnterGradesPage() {
       return;
     }
 
-    setIsLoading(true);
+    setIsSubmitting(true);
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    const className = mockClasses.find(c => c.id === selectedClassId)?.name || 'the class';
-    console.log("Grades Submitted:", { className, grades: gradesData });
+    const currentClass = allClasses.find(c => c.id === selectedClassId);
+    const className = currentClass?.name || 'the selected class';
+    console.log("Grades Submitted (Locally):", { className, grades: gradesData });
     toast({
-      title: "Grades Submitted Successfully",
+      title: "Grades Submitted Successfully (Locally)",
       description: `Grades for ${className} have been recorded. (${gradesData.length} students)`,
     });
-    setIsLoading(false);
-    // Optionally, clear the form or redirect
-    // setSelectedClassId(null); 
+    setIsSubmitting(false);
+    // setSelectedClassId(null); // Optionally clear form
   };
+
+  const getNoStudentsMessage = () => {
+    if (!selectedClassId) return "Please select a class to enter grades.";
+    if (isLoadingClasses || isLoadingStudentsState) return "Loading students...";
+    if (gradesData.length === 0 && selectedClassId) return "No students found for this class based on grade filter.";
+    return "Please select a class to enter grades.";
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -139,12 +161,16 @@ export default function EnterGradesPage() {
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="w-full md:w-1/2">
-            <Select onValueChange={setSelectedClassId} value={selectedClassId || ""}>
+            <Select 
+              onValueChange={setSelectedClassId} 
+              value={selectedClassId || ""}
+              disabled={isLoadingClasses || allClasses.length === 0}
+            >
               <SelectTrigger>
-                <SelectValue placeholder="Select a class to grade" />
+                <SelectValue placeholder={isLoadingClasses ? "Loading classes..." : (allClasses.length === 0 ? "No classes available" : "Select a class to grade")} />
               </SelectTrigger>
               <SelectContent>
-                {mockClasses.map((classItem) => (
+                {allClasses.map((classItem) => (
                   <SelectItem key={classItem.id} value={classItem.id}>
                     {classItem.name}
                   </SelectItem>
@@ -153,7 +179,14 @@ export default function EnterGradesPage() {
             </Select>
           </div>
 
-          {selectedClassId && gradesData.length > 0 && (
+          { (isLoadingClasses || (selectedClassId && isLoadingStudentsState)) && (
+            <div className="flex justify-center items-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="ml-2 text-muted-foreground">Loading data...</p>
+            </div>
+          )}
+
+          { !isLoadingClasses && !isLoadingStudentsState && selectedClassId && gradesData.length > 0 && (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -173,6 +206,7 @@ export default function EnterGradesPage() {
                           onChange={(e) => handleGradeChange(record.studentId, e.target.value)}
                           placeholder="e.g., A+"
                           className="max-w-[100px]"
+                          disabled={isSubmitting}
                         />
                       </TableCell>
                       <TableCell>
@@ -182,6 +216,7 @@ export default function EnterGradesPage() {
                           placeholder="Enter remarks..."
                           rows={1}
                           className="min-h-[40px]"
+                          disabled={isSubmitting}
                         />
                       </TableCell>
                     </TableRow>
@@ -190,22 +225,21 @@ export default function EnterGradesPage() {
               </Table>
             </div>
           )}
-          {selectedClassId && gradesData.length === 0 && (
-             <p className="text-center text-muted-foreground py-4">No students found for this class.</p>
+          
+          { !isLoadingClasses && !isLoadingStudentsState && (!selectedClassId || (selectedClassId && gradesData.length === 0)) && (
+             <p className="text-center text-muted-foreground py-4">{getNoStudentsMessage()}</p>
           )}
-           {!selectedClassId && (
-             <p className="text-center text-muted-foreground py-4">Please select a class to enter grades.</p>
-          )}
+
         </CardContent>
-        {selectedClassId && gradesData.length > 0 && (
+        {selectedClassId && gradesData.length > 0 && !isLoadingClasses && !isLoadingStudentsState && (
           <CardFooter className="border-t pt-6">
             <Button 
               onClick={handleSubmitGrades} 
-              disabled={isLoading || gradesData.some(g => !g.grade.trim())}
+              disabled={isSubmitting || gradesData.some(g => !g.grade.trim())}
               className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground"
             >
-              {isLoading ? <UploadCloud className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-              {isLoading ? 'Submitting...' : `Submit Grades for ${mockClasses.find(c => c.id === selectedClassId)?.name}`}
+              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+              {isSubmitting ? 'Submitting...' : `Submit Grades for ${allClasses.find(c => c.id === selectedClassId)?.name || 'selected class'}`}
             </Button>
           </CardFooter>
         )}
@@ -213,3 +247,4 @@ export default function EnterGradesPage() {
     </div>
   );
 }
+
