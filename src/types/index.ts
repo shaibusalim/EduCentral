@@ -8,6 +8,13 @@ export interface Student {
   dateOfBirth: string; // ISO string format: "YYYY-MM-DD"
 }
 
-// Add other shared types here as needed, for example:
-// export type UserRole = 'admin' | 'teacher' | 'student' | 'parent';
-// However, UserRole is already defined in AppContext.tsx
+export interface Teacher {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  subject: string; // e.g., "Mathematics", "Physics"
+  dateOfJoining: string; // ISO string format: "YYYY-MM-DD"
+}
+
+// Add other shared types here as needed
