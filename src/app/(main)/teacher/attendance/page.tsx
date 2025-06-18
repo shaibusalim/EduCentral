@@ -9,86 +9,142 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { UserCheck, CheckCircle, XCircle, Clock, Send, CalendarIcon } from 'lucide-react';
+import { UserCheck, CheckCircle, XCircle, Clock, Send, CalendarIcon, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import type { ClassItem, Student, AttendanceStatus, AttendanceRecord } from '@/types';
+import { getClasses } from '@/services/classService';
+import { getStudents } from '@/services/studentService';
+import { getAttendanceForClass, saveOrUpdateStudentAttendance } from '@/services/attendanceService';
 
-interface MockClass {
-  id: string;
-  name: string;
-}
-
-interface MockStudent {
-  id: string;
-  name: string;
-}
-
-interface StudentAttendanceRecord {
+interface DisplayStudentForAttendance {
   studentId: string;
   studentName: string;
-  status: 'present' | 'absent' | 'late' | 'unmarked';
+  status: AttendanceStatus;
+  // existingRecordId?: string; // To track if we're updating or creating
 }
 
-const mockClasses: MockClass[] = [
-  { id: 'class1', name: 'Grade 10A - Mathematics' },
-  { id: 'class2', name: 'Grade 11B - Physics' },
-  { id: 'class3', name: 'Grade 9C - English' },
-];
-
-const mockStudentsByClass: Record<string, MockStudent[]> = {
-  class1: [
-    { id: 's101', name: 'Alice Smith' },
-    { id: 's102', name: 'Bob Johnson' },
-    { id: 's103', name: 'Charlie Brown' },
-    { id: 's104', name: 'Diana Prince' },
-  ],
-  class2: [
-    { id: 's201', name: 'Edward Nigma' },
-    { id: 's202', name: 'Fiona Gallagher' },
-    { id: 's203', name: 'George Abitbol' },
-  ],
-  class3: [
-    { id: 's301', name: 'Hannah Montana' },
-    { id: 's302', name: 'Iris West' },
-    { id: 's303', name: 'Jack Sparrow' },
-    { id: 's304', name: 'Kara Zor-El' },
-    { id: 's305', name: 'Liam Neeson' },
-  ],
-};
-
 export default function MarkAttendancePage() {
-  const [selectedClassId, setSelectedClassId] = React.useState<string | null>(null);
-  const [attendanceRecords, setAttendanceRecords] = React.useState<StudentAttendanceRecord[]>([]);
+  const [allClasses, setAllClasses] = React.useState<ClassItem[]>([]);
+  const [allStudents, setAllStudents] = React.useState<Student[]>([]);
+  
+  const [selectedClass, setSelectedClass] = React.useState<ClassItem | null>(null);
+  const [displayedStudents, setDisplayedStudents] = React.useState<DisplayStudentForAttendance[]>([]);
   const [selectedDate, setSelectedDate] = React.useState<Date>(new Date());
+  
+  const [isLoadingClasses, setIsLoadingClasses] = React.useState(true);
+  const [isLoadingStudents, setIsLoadingStudents] = React.useState(false); // Initially false, true when class selected
+  const [isLoadingAttendance, setIsLoadingAttendance] = React.useState(false);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  
   const { toast } = useToast();
 
+  // Fetch all classes for the dropdown
   React.useEffect(() => {
-    if (selectedClassId && mockStudentsByClass[selectedClassId]) {
-      setAttendanceRecords(
-        mockStudentsByClass[selectedClassId].map(student => ({
-          studentId: student.id,
-          studentName: student.name,
-          status: 'unmarked',
-        }))
-      );
-    } else {
-      setAttendanceRecords([]);
-    }
-  }, [selectedClassId, selectedDate]); // Reset records if class or date changes
+    const fetchClasses = async () => {
+      setIsLoadingClasses(true);
+      try {
+        const fetchedClasses = await getClasses();
+        setAllClasses(fetchedClasses);
+      } catch (error) {
+        toast({ variant: "destructive", title: "Failed to load classes", description: (error as Error).message });
+      } finally {
+        setIsLoadingClasses(false);
+      }
+    };
+    fetchClasses();
+  }, [toast]);
 
-  const handleAttendanceChange = (studentId: string, status: 'present' | 'absent' | 'late') => {
-    setAttendanceRecords(prevRecords =>
+  // Fetch all students once
+   React.useEffect(() => {
+    const fetchAllStudents = async () => {
+      setIsLoadingStudents(true); // Show general student loading initially
+      try {
+        const fetchedStudents = await getStudents();
+        setAllStudents(fetchedStudents);
+      } catch (error) {
+        toast({ variant: "destructive", title: "Failed to load student data", description: (error as Error).message });
+      } finally {
+        setIsLoadingStudents(false);
+      }
+    };
+    fetchAllStudents();
+  }, [toast]);
+
+
+  // Effect to filter students and load attendance when class or date changes
+  React.useEffect(() => {
+    if (!selectedClass || allStudents.length === 0) {
+      setDisplayedStudents([]);
+      return;
+    }
+
+    setIsLoadingAttendance(true); // For loading attendance data specifically
+    
+    // Crude filtering: Assumes class name contains "Grade X" and student.grade is "Grade X"
+    const gradeInClassName = selectedClass.name.match(/Grade\s*\d+/i);
+    const classGrade = gradeInClassName ? gradeInClassName[0] : null;
+
+    const studentsForClass = allStudents.filter(student => {
+      if (!classGrade) return false; // If class name doesn't specify grade, can't filter
+      return student.grade.toLowerCase() === classGrade.toLowerCase();
+    });
+
+    let initialAttendanceRecords: DisplayStudentForAttendance[] = studentsForClass.map(student => ({
+      studentId: student.id,
+      studentName: `${student.firstName} ${student.lastName}`,
+      status: 'unmarked',
+    }));
+
+    const formattedDate = format(selectedDate, 'yyyy-MM-dd');
+
+    getAttendanceForClass(selectedClass.id, formattedDate)
+      .then(fetchedAttendance => {
+        initialAttendanceRecords = initialAttendanceRecords.map(displayStudent => {
+          const existingRecord = fetchedAttendance.find(rec => rec.studentId === displayStudent.studentId);
+          return existingRecord ? { ...displayStudent, status: existingRecord.status } : displayStudent;
+        });
+        setDisplayedStudents(initialAttendanceRecords);
+      })
+      .catch(error => {
+        toast({ variant: "destructive", title: "Failed to load existing attendance", description: (error as Error).message });
+        setDisplayedStudents(initialAttendanceRecords); // Show students even if attendance fetch fails
+      })
+      .finally(() => {
+        setIsLoadingAttendance(false);
+      });
+
+  }, [selectedClass, selectedDate, allStudents, toast]);
+
+
+  const handleClassChange = (classId: string) => {
+    const newSelectedClass = allClasses.find(c => c.id === classId) || null;
+    setSelectedClass(newSelectedClass);
+  };
+
+  const handleDateChange = (date: Date | undefined) => {
+    if (date) {
+      setSelectedDate(date);
+    }
+  };
+
+  const handleAttendanceChange = (studentId: string, status: AttendanceStatus) => {
+    setDisplayedStudents(prevRecords =>
       prevRecords.map(record =>
         record.studentId === studentId ? { ...record, status } : record
       )
     );
   };
 
-  const handleSubmitAttendance = () => {
-    const unmarkedStudents = attendanceRecords.filter(r => r.status === 'unmarked').length;
+  const handleSubmitAttendance = async () => {
+    if (!selectedClass) {
+      toast({ variant: "destructive", title: "No class selected" });
+      return;
+    }
+    const unmarkedStudents = displayedStudents.filter(r => r.status === 'unmarked').length;
     if (unmarkedStudents > 0) {
       toast({
         variant: "destructive",
@@ -98,17 +154,26 @@ export default function MarkAttendancePage() {
       return;
     }
 
-    const className = mockClasses.find(c => c.id === selectedClassId)?.name || 'the class';
-    const dateStr = format(selectedDate, 'PPP');
+    setIsSubmitting(true);
+    const formattedDate = format(selectedDate, 'yyyy-MM-dd');
+    const attendanceDataToSave = displayedStudents
+      .filter(s => s.status !== 'unmarked') // Only save if not 'unmarked'
+      .map(s => ({ studentId: s.studentId, studentName: s.studentName, status: s.status }));
 
-    console.log("Attendance Submitted:", { date: dateStr, className, records: attendanceRecords });
-    toast({
-      title: "Attendance Submitted",
-      description: `Attendance for ${className} on ${dateStr} has been recorded. (${attendanceRecords.length} students)`,
-    });
+    try {
+      await saveOrUpdateStudentAttendance(selectedClass.id, formattedDate, attendanceDataToSave);
+      toast({
+        title: "Attendance Submitted",
+        description: `Attendance for ${selectedClass.name} on ${format(selectedDate, 'PPP')} has been recorded.`,
+      });
+    } catch (error) {
+      toast({ variant: "destructive", title: "Submission Failed", description: (error as Error).message });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const getAttendanceIcon = (status: StudentAttendanceRecord['status']) => {
+  const getAttendanceIcon = (status: AttendanceStatus) => {
     switch (status) {
       case 'present': return <CheckCircle className="h-5 w-5 text-green-500" />;
       case 'absent': return <XCircle className="h-5 w-5 text-red-500" />;
@@ -116,6 +181,13 @@ export default function MarkAttendancePage() {
       default: return null;
     }
   };
+  
+  const noStudentsMessage = !selectedClass 
+    ? "Please select a class to view students."
+    : (isLoadingClasses || isLoadingStudents) 
+    ? "Loading students..."
+    : "No students found for this class based on the current filtering (matching student grade to class name). Please check student records or class naming.";
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -133,12 +205,12 @@ export default function MarkAttendancePage() {
         <CardContent className="space-y-6">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="w-full md:w-1/2">
-              <Select onValueChange={setSelectedClassId} value={selectedClassId || ""}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a class" />
+              <Select onValueChange={handleClassChange} value={selectedClass?.id || ""}>
+                <SelectTrigger disabled={isLoadingClasses}>
+                  <SelectValue placeholder={isLoadingClasses ? "Loading classes..." : "Select a class"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {mockClasses.map((classItem) => (
+                  {allClasses.map((classItem) => (
                     <SelectItem key={classItem.id} value={classItem.id}>
                       {classItem.name}
                     </SelectItem>
@@ -164,15 +236,21 @@ export default function MarkAttendancePage() {
                   <Calendar
                     mode="single"
                     selected={selectedDate}
-                    onSelect={(date) => date && setSelectedDate(date)}
+                    onSelect={handleDateChange}
                     initialFocus
+                    disabled={(date) => date > new Date()} // Optional: disable future dates
                   />
                 </PopoverContent>
               </Popover>
             </div>
           </div>
 
-          {selectedClassId && attendanceRecords.length > 0 && (
+          { (isLoadingStudents && !selectedClass) || (isLoadingAttendance && selectedClass) ? (
+            <div className="flex justify-center items-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="ml-2 text-muted-foreground">Loading data...</p>
+            </div>
+          ) : displayedStudents.length > 0 ? (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -183,13 +261,13 @@ export default function MarkAttendancePage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {attendanceRecords.map((record) => (
+                  {displayedStudents.map((record) => (
                     <TableRow key={record.studentId}>
                       <TableCell className="font-medium">{record.studentName}</TableCell>
                       <TableCell className="text-center">
                         <RadioGroup
                           value={record.status === 'unmarked' ? undefined : record.status}
-                          onValueChange={(value) => handleAttendanceChange(record.studentId, value as 'present' | 'absent' | 'late')}
+                          onValueChange={(value) => handleAttendanceChange(record.studentId, value as AttendanceStatus)}
                           className="flex justify-center space-x-2 sm:space-x-4"
                         >
                           <div className="flex items-center space-x-1 sm:space-x-2">
@@ -222,23 +300,19 @@ export default function MarkAttendancePage() {
                 </TableBody>
               </Table>
             </div>
-          )}
-          {selectedClassId && attendanceRecords.length === 0 && (
-             <p className="text-center text-muted-foreground py-4">No students found for this class or class not selected.</p>
-          )}
-           {!selectedClassId && (
-             <p className="text-center text-muted-foreground py-4">Please select a class to view students.</p>
+          ) : (
+             <p className="text-center text-muted-foreground py-4">{noStudentsMessage}</p>
           )}
         </CardContent>
-        {selectedClassId && attendanceRecords.length > 0 && (
+        {selectedClass && displayedStudents.length > 0 && (
           <CardFooter className="border-t pt-6">
             <Button 
               onClick={handleSubmitAttendance} 
-              disabled={attendanceRecords.some(r => r.status === 'unmarked')}
+              disabled={isSubmitting || displayedStudents.some(r => r.status === 'unmarked')}
               className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground"
             >
-              <Send className="mr-2 h-4 w-4" />
-              Submit Attendance for {mockClasses.find(c => c.id === selectedClassId)?.name} on {format(selectedDate, 'MMM d')}
+              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+              {isSubmitting ? 'Submitting...' : `Submit Attendance for ${selectedClass.name} on ${format(selectedDate, 'MMM d')}`}
             </Button>
           </CardFooter>
         )}
@@ -246,6 +320,3 @@ export default function MarkAttendancePage() {
     </div>
   );
 }
-
-
-    

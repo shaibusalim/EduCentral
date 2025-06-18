@@ -41,4 +41,16 @@ export interface NotificationItem {
   read: boolean;
 }
 
+export type AttendanceStatus = 'present' | 'absent' | 'late' | 'unmarked';
+
+export interface AttendanceRecord {
+  id?: string; // Firestore document ID, optional as it's not present before saving
+  studentId: string;
+  studentName: string; // Denormalized for easier display, though could be fetched
+  classId: string;
+  date: string; // YYYY-MM-DD format
+  status: AttendanceStatus;
+  className?: string; // Denormalized for easier display if needed
+}
 // Add other shared types here as needed
+
