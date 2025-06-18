@@ -32,9 +32,11 @@ export type ClassFormData = z.infer<typeof classFormSchema>;
 interface ClassFormProps {
   onSubmit: (data: ClassFormData) => void;
   onCancel: () => void;
-  defaultValues?: Partial<ClassFormData & { assignedTeacherName?: string }>; // assignedTeacherName is not part of schema but might be in initial display data
+  defaultValues?: Partial<ClassFormData & { assignedTeacherName?: string }>;
   isLoading?: boolean;
 }
+
+const NO_TEACHER_VALUE = "__NONE_TEACHER_ID__"; // Unique value for "None" option
 
 export function ClassForm({ onSubmit, onCancel, defaultValues, isLoading }: ClassFormProps) {
   const [teachers, setTeachers] = React.useState<Teacher[]>([]);
@@ -64,16 +66,15 @@ export function ClassForm({ onSubmit, onCancel, defaultValues, isLoading }: Clas
     resolver: zodResolver(classFormSchema),
     defaultValues: {
       name: defaultValues?.name || '',
-      assignedTeacherId: defaultValues?.assignedTeacherId || null,
+      assignedTeacherId: defaultValues?.assignedTeacherId === undefined ? undefined : (defaultValues.assignedTeacherId || null),
       roomNumber: defaultValues?.roomNumber || '',
     },
   });
   
   React.useEffect(() => {
-    // Reset form if defaultValues change (e.g. when editing a different item)
     form.reset({
       name: defaultValues?.name || '',
-      assignedTeacherId: defaultValues?.assignedTeacherId || null,
+      assignedTeacherId: defaultValues?.assignedTeacherId === undefined ? undefined : (defaultValues.assignedTeacherId || null),
       roomNumber: defaultValues?.roomNumber || '',
     });
   }, [defaultValues, form]);
@@ -102,8 +103,14 @@ export function ClassForm({ onSubmit, onCancel, defaultValues, isLoading }: Clas
             <FormItem>
               <FormLabel>Assigned Teacher</FormLabel>
               <Select 
-                onValueChange={field.onChange} 
-                value={field.value || ""}
+                onValueChange={(value) => {
+                  if (value === NO_TEACHER_VALUE) {
+                    field.onChange(null);
+                  } else {
+                    field.onChange(value);
+                  }
+                }} 
+                value={field.value === null ? NO_TEACHER_VALUE : (field.value || "")} // Handles null, undefined, and string ID
                 disabled={isLoadingTeachers || teachers.length === 0}
               >
                 <FormControl>
@@ -121,7 +128,9 @@ export function ClassForm({ onSubmit, onCancel, defaultValues, isLoading }: Clas
                     </div>
                   ) : (
                     <>
-                      <SelectItem value=""><em>None</em></SelectItem>
+                      <SelectItem value={NO_TEACHER_VALUE}>
+                        <em>None</em>
+                      </SelectItem>
                       {teachers.map((teacher) => (
                         <SelectItem key={teacher.id} value={teacher.id}>
                           {`${teacher.firstName} ${teacher.lastName}`}
