@@ -3,7 +3,7 @@
 import { useAppContext } from '@/contexts/AppContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { PageTitle } from '@/components/ui/PageTitle';
-import { Users, BookOpen, BarChart3, DollarSign } from 'lucide-react';
+import { Users, BookOpen, BarChart3, DollarSign, UserCheck } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 
