@@ -63,7 +63,7 @@ export function AppSidebar() {
     if (isSubItem) {
       return (
         <SidebarMenuSubItem key={item.href}>
-          <Link href={item.href} legacyBehavior passHref>
+          <Link href={item.href}>
             <SidebarMenuSubButton isActive={isActive} className="text-sm">
               {buttonContent}
             </SidebarMenuSubButton>
@@ -74,7 +74,7 @@ export function AppSidebar() {
 
     return (
       <SidebarMenuItem key={item.href}>
-        <Link href={item.href} legacyBehavior passHref>
+        <Link href={item.href}>
           <SidebarMenuButton isActive={isActive} tooltip={item.label} className="justify-start">
             {buttonContent}
           </SidebarMenuButton>
