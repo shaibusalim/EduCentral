@@ -13,6 +13,7 @@ import {
   Timestamp,
   DocumentData,
   QueryDocumentSnapshot,
+  orderBy,
 } from 'firebase/firestore';
 import type { GradeRecord } from '@/types';
 
@@ -48,6 +49,21 @@ export const getGradesForClassAssessment = async (
   }
 };
 
+export const getGradesForStudent = async (studentId: string): Promise<GradeRecord[]> => {
+  try {
+    const q = query(
+      gradesCollectionRef,
+      where('studentId', '==', studentId),
+      orderBy('assessmentName', 'asc') // Optional: order by assessment name
+    );
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(fromFirestore);
+  } catch (error) {
+    console.error(`Error fetching grades for student ${studentId}: `, error);
+    throw new Error(`Failed to fetch grades for student ${studentId}.`);
+  }
+};
+
 export const saveOrUpdateStudentGrades = async (
   classId: string,
   assessmentName: string,
@@ -71,8 +87,6 @@ export const saveOrUpdateStudentGrades = async (
     for (const studentGrade of studentGradesData) {
       if (!studentGrade.grade.trim()) continue; // Don't save if grade is empty
 
-      const existingRecord = existingRecordsMap.get(studentGrade.studentId);
-
       const gradeDataPayload = {
         studentId: studentGrade.studentId,
         // studentName: studentGrade.studentName, // Denormalize if needed, but studentId is key
@@ -83,7 +97,8 @@ export const saveOrUpdateStudentGrades = async (
         updatedAt: serverTimestamp() as Timestamp,
       };
 
-      if (existingRecord) {
+      if (existingRecordMap.has(studentGrade.studentId)) {
+        const existingRecord = existingRecordsMap.get(studentGrade.studentId)!;
         // Update existing record
         const recordRef = doc(db, 'gradeRecords', existingRecord.id);
         batch.update(recordRef, gradeDataPayload);
@@ -102,3 +117,4 @@ export const saveOrUpdateStudentGrades = async (
     throw new Error('Failed to save or update grade records.');
   }
 };
+
