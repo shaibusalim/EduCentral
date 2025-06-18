@@ -5,7 +5,7 @@ import * as React from 'react';
 import { PageTitle } from '@/components/ui/PageTitle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { PlusCircle, GraduationCap, Edit3, Trash2 } from 'lucide-react';
+import { PlusCircle, GraduationCap, Edit3, Trash2, Loader2 } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -30,33 +30,52 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type { TeacherFormData } from '@/components/admin/teachers/TeacherForm';
-
-// Mock initial teacher data
-const initialTeachers: Teacher[] = [
-  { id: 't1', firstName: 'Emily', lastName: 'Clark', email: 'emily.c@example.com', subject: 'Mathematics', dateOfJoining: '2018-08-15' },
-  { id: 't2', firstName: 'David', lastName: 'Wilson', email: 'david.w@example.com', subject: 'Physics', dateOfJoining: '2020-01-20' },
-  { id: 't3', firstName: 'Sarah', lastName: 'Garcia', email: 'sarah.g@example.com', subject: 'English', dateOfJoining: '2019-07-10' },
-];
+import { getTeachers, addTeacherToFirestore, updateTeacherInFirestore, deleteTeacherFromFirestore } from '@/services/teacherService';
 
 export default function TeacherManagementPage() {
-  const [teachers, setTeachers] = React.useState<Teacher[]>(initialTeachers);
+  const [teachers, setTeachers] = React.useState<Teacher[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
   const { toast } = useToast();
   const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
   const [editingTeacher, setEditingTeacher] = React.useState<Teacher | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [deletingTeacherId, setDeletingTeacherId] = React.useState<string | null>(null);
 
+  const fetchTeachers = React.useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const fetchedTeachers = await getTeachers();
+      setTeachers(fetchedTeachers);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Failed to load teachers",
+        description: (error as Error).message || "Could not fetch teacher data from the server.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast]);
 
-  const handleAddTeacher = (newTeacherData: Omit<Teacher, 'id'>) => {
-    const newTeacher: Teacher = {
-      id: `t${Date.now().toString()}`, 
-      ...newTeacherData,
-    };
-    setTeachers((prevTeachers) => [newTeacher, ...prevTeachers]);
-    toast({
-      title: "Teacher Added",
-      description: `${newTeacher.firstName} ${newTeacher.lastName} has been successfully added.`,
-    });
+  React.useEffect(() => {
+    fetchTeachers();
+  }, [fetchTeachers]);
+
+  const handleAddTeacher = async (newTeacherData: Omit<Teacher, 'id'>) => {
+    try {
+      await addTeacherToFirestore(newTeacherData);
+      toast({
+        title: "Teacher Added",
+        description: `${newTeacherData.firstName} ${newTeacherData.lastName} has been successfully added.`,
+      });
+      fetchTeachers(); // Refresh list
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Failed to add teacher",
+        description: (error as Error).message,
+      });
+    }
   };
 
   const handleOpenEditDialog = (teacher: Teacher) => {
@@ -64,24 +83,30 @@ export default function TeacherManagementPage() {
     setIsEditDialogOpen(true);
   };
 
-  const handleUpdateTeacher = (updatedTeacherData: TeacherFormData) => {
+  const handleUpdateTeacher = async (updatedTeacherFormData: TeacherFormData) => {
     if (!editingTeacher) return;
 
-    const updatedTeacher: Teacher = {
-      ...editingTeacher,
-      ...updatedTeacherData,
-      dateOfJoining: format(updatedTeacherData.dateOfJoining, "yyyy-MM-dd"),
+    const dataForService: Omit<Teacher, 'id'> = {
+        ...updatedTeacherFormData,
+        dateOfJoining: format(updatedTeacherFormData.dateOfJoining, "yyyy-MM-dd"),
     };
-    
-    setTeachers((prevTeachers) =>
-      prevTeachers.map((t) => (t.id === updatedTeacher.id ? updatedTeacher : t))
-    );
-    toast({
-      title: "Teacher Updated",
-      description: `${updatedTeacher.firstName} ${updatedTeacher.lastName}'s details have been updated.`,
-    });
-    setIsEditDialogOpen(false);
-    setEditingTeacher(null);
+
+    try {
+      await updateTeacherInFirestore(editingTeacher.id, dataForService);
+      toast({
+        title: "Teacher Updated",
+        description: `${dataForService.firstName} ${dataForService.lastName}'s details have been updated.`,
+      });
+      fetchTeachers(); // Refresh list
+      setIsEditDialogOpen(false);
+      setEditingTeacher(null);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Failed to update teacher",
+        description: (error as Error).message,
+      });
+    }
   };
 
   const handleOpenDeleteDialog = (teacherId: string) => {
@@ -89,17 +114,27 @@ export default function TeacherManagementPage() {
     setIsDeleteDialogOpen(true);
   };
 
-  const confirmDeleteTeacher = () => {
+  const confirmDeleteTeacher = async () => {
     if (!deletingTeacherId) return;
     const teacherToDelete = teachers.find(t => t.id === deletingTeacherId);
-    setTeachers((prevTeachers) => prevTeachers.filter(teacher => teacher.id !== deletingTeacherId));
-    toast({
-      title: "Teacher Deleted",
-      description: `${teacherToDelete?.firstName || 'Teacher'} has been removed.`,
-      variant: "destructive",
-    });
-    setIsDeleteDialogOpen(false);
-    setDeletingTeacherId(null);
+    try {
+      await deleteTeacherFromFirestore(deletingTeacherId);
+      toast({
+        title: "Teacher Deleted",
+        description: `${teacherToDelete?.firstName || 'Teacher'} has been removed.`,
+      });
+      fetchTeachers(); // Refresh list
+      setIsDeleteDialogOpen(false);
+      setDeletingTeacherId(null);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Failed to delete teacher",
+        description: (error as Error).message,
+      });
+      setIsDeleteDialogOpen(false);
+      setDeletingTeacherId(null);
+    }
   };
 
   return (
@@ -122,7 +157,12 @@ export default function TeacherManagementPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {teachers.length === 0 ? (
+          {isLoading ? (
+            <div className="flex justify-center items-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="ml-2 text-muted-foreground">Loading teachers...</p>
+            </div>
+          ) : teachers.length === 0 ? (
             <p className="text-center text-muted-foreground py-8">
               No teachers found. Click "Add New Teacher" to get started.
             </p>
@@ -144,7 +184,7 @@ export default function TeacherManagementPage() {
                     <TableCell>{teacher.email}</TableCell>
                     <TableCell>{teacher.subject}</TableCell>
                     <TableCell>
-                      {format(parseISO(teacher.dateOfJoining), 'PPP')}
+                      {teacher.dateOfJoining ? format(parseISO(teacher.dateOfJoining), 'PPP') : 'N/A'}
                     </TableCell>
                     <TableCell className="text-right space-x-2">
                       <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(teacher)} aria-label="Edit teacher">
@@ -176,7 +216,7 @@ export default function TeacherManagementPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the teacher's record.
+              This action cannot be undone. This will permanently delete the teacher's record from the database.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
