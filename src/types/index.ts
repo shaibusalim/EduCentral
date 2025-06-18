@@ -62,5 +62,19 @@ export interface GradeRecord {
   remarks: string; // Optional comments from the teacher
   // studentName and className could be denormalized here if frequently needed for display without extra lookups
 }
-// Add other shared types here as needed
 
+export type FeeStatus = 'pending' | 'paid' | 'overdue' | 'partially_paid';
+
+export interface FeeRecord {
+  id: string; // Firestore document ID
+  studentId: string;
+  description: string; // e.g., "Term 1 Fees - 2024", "Library Fine"
+  amountDue: number;
+  amountPaid: number; // Total amount paid towards this specific fee item
+  issuedDate: string; // YYYY-MM-DD
+  dueDate: string; // YYYY-MM-DD
+  status: FeeStatus;
+  // Timestamps for creation/update will be handled by Firestore serverTimestamp by an admin process
+}
+
+// Add other shared types here as needed
