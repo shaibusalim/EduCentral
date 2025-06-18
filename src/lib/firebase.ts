@@ -1,7 +1,7 @@
 
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
 import { getFirestore, type Firestore } from 'firebase/firestore';
-// import { getAuth } from 'firebase/auth'; // We can add Auth later if needed
+import { getAuth, type Auth } from 'firebase/auth'; // Import Auth
 // import { getStorage } from 'firebase/storage'; // We can add Storage later if needed
 
 const firebaseConfig = {
@@ -16,7 +16,7 @@ const firebaseConfig = {
 
 let app: FirebaseApp;
 let db: Firestore;
-// let auth: Auth; // Auth instance
+let auth: Auth; // Auth instance
 // let storage: Storage; // Storage instance
 
 if (!getApps().length) {
@@ -26,7 +26,7 @@ if (!getApps().length) {
 }
 
 db = getFirestore(app);
-// auth = getAuth(app);
+auth = getAuth(app); // Initialize Auth
 // storage = getStorage(app);
 
-export { app, db /*, auth, storage */ };
+export { app, db, auth /*, storage */ };

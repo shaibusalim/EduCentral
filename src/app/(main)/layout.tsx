@@ -1,3 +1,4 @@
+
 "use client";
 
 import type React from 'react';
@@ -15,16 +16,20 @@ export default function AuthenticatedLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { role, isLoadingRole } = useAppContext();
+  const { authUser, role, isLoadingUser } = useAppContext();
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoadingRole && !role) {
-      router.push('/');
+    if (!isLoadingUser) {
+      if (!authUser) {
+        router.push('/'); // Redirect to login/role selection if not authenticated
+      } else if (!role) {
+        router.push('/'); // Redirect if authenticated but no role selected
+      }
     }
-  }, [role, isLoadingRole, router]);
+  }, [authUser, role, isLoadingUser, router]);
 
-  if (isLoadingRole || !role) {
+  if (isLoadingUser || !authUser || !role) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
