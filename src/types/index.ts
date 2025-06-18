@@ -17,4 +17,11 @@ export interface Teacher {
   dateOfJoining: string; // ISO string format: "YYYY-MM-DD"
 }
 
+export interface ClassItem {
+  id: string;
+  name: string; // e.g., "Grade 10 Section A", "Standard 5"
+  assignedTeacherName: string; // For simplicity, just the name. Could be teacherId later.
+  roomNumber?: string; // Optional
+}
+
 // Add other shared types here as needed
