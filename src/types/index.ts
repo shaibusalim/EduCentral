@@ -48,9 +48,9 @@ export interface AttendanceRecord {
   studentId: string;
   studentName: string; // Denormalized for easier display, though could be fetched
   classId: string;
+  className?: string; // Denormalized class name
   date: string; // YYYY-MM-DD format
   status: AttendanceStatus;
-  className?: string; // Denormalized for easier display if needed
 }
 
 export interface GradeRecord {

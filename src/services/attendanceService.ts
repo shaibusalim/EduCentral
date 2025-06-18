@@ -16,11 +16,10 @@ import {
   orderBy,
 } from 'firebase/firestore';
 import type { AttendanceRecord, AttendanceStatus } from '@/types';
+import { getClasses } from './classService'; // Import getClasses
 
-const attendanceCollectionRef = collection(db, 'attendanceRecords');
-
-// Adjusted to return fields relevant for various contexts
-const fromFirestoreToAttendanceRecord = (docSnap: QueryDocumentSnapshot<DocumentData>): Omit<AttendanceRecord, 'studentName' | 'className'> & { id: string } => {
+// This helper is used by getAttendanceForClass and returns a more minimal record
+const fromFirestoreToMinimalAttendanceRecord = (docSnap: QueryDocumentSnapshot<DocumentData>): Omit<AttendanceRecord, 'studentName' | 'className'> & { id: string } => {
   const data = docSnap.data();
   return {
     id: docSnap.id,
@@ -39,22 +38,38 @@ export const getAttendanceForClass = async (classId: string, date: string): Prom
       where('date', '==', date)
     );
     const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(fromFirestoreToAttendanceRecord);
+    return querySnapshot.docs.map(fromFirestoreToMinimalAttendanceRecord);
   } catch (error) {
     console.error('Error fetching attendance records for class: ', error);
     throw new Error('Failed to fetch attendance records for class.');
   }
 };
 
-export const getAttendanceForStudent = async (studentId: string): Promise<Array<Omit<AttendanceRecord, 'studentName' | 'className'> & { id: string }>> => {
+// Updated return type to include className
+export const getAttendanceForStudent = async (studentId: string): Promise<Array<Omit<AttendanceRecord, 'studentName'> & { id: string }>> => {
   try {
-    const q = query(
-      attendanceCollectionRef,
-      where('studentId', '==', studentId),
-      orderBy('date', 'desc') // Show most recent first
-    );
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(fromFirestoreToAttendanceRecord);
+    const [allClasses, attendanceSnapshot] = await Promise.all([
+      getClasses(),
+      getDocs(query(
+        collection(db, 'attendanceRecords'),
+        where('studentId', '==', studentId),
+        orderBy('date', 'desc')
+      ))
+    ]);
+
+    const classMap = new Map(allClasses.map(c => [c.id, c.name]));
+
+    return attendanceSnapshot.docs.map(docSnap => {
+      const data = docSnap.data();
+      return {
+        id: docSnap.id,
+        studentId: data.studentId,
+        classId: data.classId,
+        className: classMap.get(data.classId) || data.classId, // Fallback to classId if name not found
+        date: data.date,
+        status: data.status as AttendanceStatus,
+      };
+    });
   } catch (error) {
     console.error(`Error fetching attendance records for student ${studentId}: `, error);
     throw new Error(`Failed to fetch attendance records for student ${studentId}.`);
@@ -70,7 +85,7 @@ export const saveOrUpdateStudentAttendance = async (
     const batch = writeBatch(db);
 
     const existingRecordsQuery = query(
-      attendanceCollectionRef,
+      collection(db, 'attendanceRecords'),
       where('classId', '==', classId),
       where('date', '==', date)
     );
@@ -83,18 +98,18 @@ export const saveOrUpdateStudentAttendance = async (
     for (const attendance of studentAttendances) {
       if (attendance.status === 'unmarked') continue; 
 
-      const existingRecord = existingRecordsMap.get(attendance.studentId);
-
       const payload = {
         studentId: attendance.studentId,
+        // studentName: attendance.studentName, // Denormalized studentName for teacher view, not strictly part of core record
         classId: classId,
         date: date,
         status: attendance.status,
         updatedAt: serverTimestamp() as Timestamp,
       };
 
-      if (existingRecord) {
-        if (existingRecord.data.status !== attendance.status) {
+      if (existingRecordsMap.has(attendance.studentId)) {
+        const existingRecord = existingRecordsMap.get(attendance.studentId)!;
+        if (existingRecord.data.status !== attendance.status) { // Only update if status changed
           const recordRef = doc(db, 'attendanceRecords', existingRecord.id);
           batch.update(recordRef, payload);
         }
@@ -102,7 +117,6 @@ export const saveOrUpdateStudentAttendance = async (
         const newRecordRef = doc(collection(db, 'attendanceRecords'));
         batch.set(newRecordRef, {
           ...payload,
-          // studentName: attendance.studentName, // Denormalize if needed, but not part of fromFirestoreToAttendanceRecord
           createdAt: serverTimestamp() as Timestamp,
         });
       }

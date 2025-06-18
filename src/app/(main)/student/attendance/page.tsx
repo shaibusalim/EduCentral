@@ -15,19 +15,20 @@ import {
 } from "@/components/ui/table";
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import type { AttendanceRecord, AttendanceStatus } from '@/types'; // AttendanceStatus might be useful for badge styling
+import type { AttendanceRecord, AttendanceStatus } from '@/types'; 
 import { getAttendanceForStudent } from '@/services/attendanceService';
 import { format, parseISO } from 'date-fns';
 
 // SIMULATION: In a real app, this would come from auth context
 const CURRENT_STUDENT_ID = "student123"; // Replace with an actual student ID from your Firestore
 
-type DisplayableAttendanceRecord = Omit<AttendanceRecord, 'studentName' | 'className'> & { id: string };
+// This type now matches the enhanced return type of getAttendanceForStudent
+type DisplayableAttendanceRecord = Omit<AttendanceRecord, 'studentName'> & { id: string };
 
 const getStatusBadgeVariant = (status: AttendanceStatus) => {
   switch (status) {
-    case 'present': return 'default'; // Or a success-like variant
-    case 'late': return 'secondary'; // Or a warning-like variant
+    case 'present': return 'default'; 
+    case 'late': return 'secondary'; 
     case 'absent': return 'destructive';
     default: return 'outline';
   }
@@ -69,7 +70,7 @@ export default function StudentAttendancePage() {
   const calculateOverallAttendance = () => {
     if (records.length === 0) return 0;
     const presentOrLate = records.filter(r => r.status === 'present' || r.status === 'late').length;
-    const totalConsidered = records.filter(r => r.status !== 'unmarked').length; // Exclude 'unmarked' from total days
+    const totalConsidered = records.filter(r => r.status !== 'unmarked').length; 
     return totalConsidered > 0 ? Math.round((presentOrLate / totalConsidered) * 100) : 0;
   };
 
@@ -120,7 +121,7 @@ export default function StudentAttendancePage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
-                  <TableHead>Class ID</TableHead>
+                  <TableHead>Class</TableHead>
                   <TableHead className="text-center">Status</TableHead>
                 </TableRow>
               </TableHeader>
@@ -130,7 +131,7 @@ export default function StudentAttendancePage() {
                     <TableCell>
                       {format(parseISO(item.date), 'PPP')}
                     </TableCell>
-                    <TableCell>{item.classId}</TableCell> {/* Displaying Class ID for now */}
+                    <TableCell>{item.className || item.classId}</TableCell> {}
                     <TableCell className="text-center">
                       <Badge variant={getStatusBadgeVariant(item.status)} className="capitalize">
                         {item.status}

@@ -24,8 +24,11 @@ interface AttendanceStats {
   totalRecordedDays: number;
 }
 
+// Updated type to reflect potential inclusion of className
+type ParentDisplayableAttendanceRecord = Omit<AttendanceRecord, 'studentName'> & { id: string };
+
 export default function ParentAttendancePage() {
-  const [attendanceRecords, setAttendanceRecords] = React.useState<AttendanceRecord[]>([]);
+  const [attendanceRecords, setAttendanceRecords] = React.useState<ParentDisplayableAttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const { toast } = useToast();
 
@@ -39,7 +42,7 @@ export default function ParentAttendancePage() {
       setIsLoading(true);
       try {
         const fetchedRecords = await getAttendanceForStudent(CURRENT_CHILD_STUDENT_ID);
-        setAttendanceRecords(fetchedRecords as AttendanceRecord[]); // Assuming service returns the fuller type or cast as needed
+        setAttendanceRecords(fetchedRecords); 
       } catch (error) {
         toast({
           variant: "destructive",
@@ -80,8 +83,8 @@ export default function ParentAttendancePage() {
   const stats = calculateAttendanceStats();
   const recentAbsences = attendanceRecords
     .filter(r => r.status === 'absent')
-    .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime()) // Sort descending by date
-    .slice(0, 5); // Show latest 5 absences
+    .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime()) 
+    .slice(0, 5); 
 
   return (
     <div className="flex flex-col gap-6">
@@ -122,7 +125,7 @@ export default function ParentAttendancePage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats.daysPresent}</div>
-                <p className="text-xs text-muted-foreground">This academic year (includes late)</p>
+                <p className="text-xs text-muted-foreground">This academic year</p> {/* Removed (includes late) as it might be confusing with separate late count */}
               </CardContent>
             </Card>
             <Card className="shadow-lg">
@@ -152,7 +155,7 @@ export default function ParentAttendancePage() {
                     <li key={absence.id || index} className="flex justify-between items-center p-3 rounded-md border bg-secondary/30">
                       <div>
                         <p className="font-medium">{format(parseISO(absence.date), 'PPP')}</p>
-                        {/* For simplicity, not showing reason as it's not in AttendanceRecord. Could be added. */}
+                        <p className="text-xs text-muted-foreground">Class: {absence.className || absence.classId}</p>
                       </div>
                       <AlertCircle className="h-5 w-5 text-destructive" />
                     </li>
@@ -173,7 +176,7 @@ export default function ParentAttendancePage() {
             </CardHeader>
             <CardContent>
                 <p className="text-muted-foreground">
-                A full calendar view or daily log of attendance will be implemented here. This section would typically show a breakdown by day/subject.
+                A full calendar view or daily log of attendance will be implemented here. This section would typically show a breakdown by day/subject, now enriched with class names.
               </p>
             </CardContent>
           </Card>
