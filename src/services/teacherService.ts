@@ -4,9 +4,9 @@
 import { db } from '@/lib/firebase';
 import {
   collection,
-  addDoc,
-  getDocs,
   doc,
+  setDoc, // Changed from addDoc
+  getDocs,
   updateDoc,
   deleteDoc,
   Timestamp,
@@ -25,11 +25,12 @@ interface TeacherDocumentData {
   email: string;
   subject: string;
   dateOfJoining: Timestamp;
-  createdAt?: Timestamp;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 const fromFirestore = (docSnap: any): Teacher => {
-  const data = docSnap.data() as TeacherDocumentData;
+  const data = docSnap.data();
   let formattedDateOfJoining = '';
   if (data.dateOfJoining && data.dateOfJoining.toDate) {
     const dateObj = data.dateOfJoining.toDate();
@@ -43,7 +44,7 @@ const fromFirestore = (docSnap: any): Teacher => {
   }
 
   return {
-    id: docSnap.id,
+    id: docSnap.id, // This will be the Firebase UID
     firstName: data.firstName,
     lastName: data.lastName,
     email: data.email,
@@ -63,38 +64,40 @@ export const getTeachers = async (): Promise<Teacher[]> => {
   }
 };
 
-export const addTeacherToFirestore = async (teacherData: Omit<Teacher, 'id'>): Promise<Teacher> => {
+export const addTeacherToFirestore = async (uid: string, teacherProfileData: Omit<Teacher, 'id'>): Promise<void> => {
   try {
-    const dataToSave: Omit<TeacherDocumentData, 'dateOfJoining' | 'createdAt'> & { dateOfJoining: Timestamp, createdAt: Timestamp } = {
-      firstName: teacherData.firstName,
-      lastName: teacherData.lastName,
-      email: teacherData.email,
-      subject: teacherData.subject,
-      dateOfJoining: Timestamp.fromDate(parseISO(teacherData.dateOfJoining)),
+    const teacherDocRef = doc(db, 'teachers', uid);
+    const dataToSave = {
+      firstName: teacherProfileData.firstName,
+      lastName: teacherProfileData.lastName,
+      email: teacherProfileData.email,
+      subject: teacherProfileData.subject,
+      dateOfJoining: Timestamp.fromDate(parseISO(teacherProfileData.dateOfJoining)),
       createdAt: serverTimestamp() as Timestamp,
+      updatedAt: serverTimestamp() as Timestamp,
     };
-    const docRef = await addDoc(teachersCollectionRef, dataToSave);
-    return {
-      ...teacherData,
-      id: docRef.id,
-    };
+    await setDoc(teacherDocRef, dataToSave);
   } catch (error) {
-    console.error("Error adding teacher: ", error);
-    throw new Error("Failed to add teacher.");
+    console.error("Error adding teacher profile to Firestore: ", error);
+    throw new Error("Failed to add teacher profile.");
   }
 };
 
-export const updateTeacherInFirestore = async (teacherId: string, teacherData: Omit<Teacher, 'id'>): Promise<void> => {
+// Password and email changes are handled via Firebase Auth, not this profile update
+export const updateTeacherInFirestore = async (teacherId: string, teacherData: Omit<Teacher, 'id' | 'email'>): Promise<void> => {
   try {
-    const teacherDocRef = doc(db, 'teachers', teacherId);
-    const dataToUpdate = {
-      ...teacherData,
+    const teacherDocRef = doc(db, 'teachers', teacherId); // teacherId is UID
+    const dataToUpdate: Partial<Omit<TeacherDocumentData, 'email' | 'createdAt'>> = {
+      firstName: teacherData.firstName,
+      lastName: teacherData.lastName,
+      subject: teacherData.subject,
       dateOfJoining: Timestamp.fromDate(parseISO(teacherData.dateOfJoining)),
+      updatedAt: serverTimestamp() as Timestamp,
     };
     await updateDoc(teacherDocRef, dataToUpdate);
   } catch (error) {
-    console.error("Error updating teacher: ", error);
-    throw new Error("Failed to update teacher.");
+    console.error("Error updating teacher profile: ", error);
+    throw new Error("Failed to update teacher profile.");
   }
 };
 
@@ -102,8 +105,9 @@ export const deleteTeacherFromFirestore = async (teacherId: string): Promise<voi
   try {
     const teacherDocRef = doc(db, 'teachers', teacherId);
     await deleteDoc(teacherDocRef);
+    // Note: Also need to delete from 'users' collection and Firebase Auth
   } catch (error) {
-    console.error("Error deleting teacher: ", error);
-    throw new Error("Failed to delete teacher.");
+    console.error("Error deleting teacher profile: ", error);
+    throw new Error("Failed to delete teacher profile.");
   }
 };

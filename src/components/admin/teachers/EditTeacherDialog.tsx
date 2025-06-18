@@ -17,7 +17,7 @@ interface EditTeacherDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   teacherToEdit: Teacher;
-  onTeacherUpdated: (updatedTeacherData: TeacherFormData) => void;
+  onTeacherUpdated: (updatedTeacherData: Omit<TeacherFormData, 'password' | 'email'>) => void;
 }
 
 export function EditTeacherDialog({ 
@@ -30,17 +30,18 @@ export function EditTeacherDialog({
 
   const handleSubmit = async (data: TeacherFormData) => {
     setIsLoading(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
     
-    onTeacherUpdated(data);
+    const { email, password, ...editableData } = data;
+    onTeacherUpdated(editableData);
     setIsLoading(false);
-    onOpenChange(false); // Close dialog on successful update
+    onOpenChange(false);
   };
 
-  const defaultValuesForForm = {
+  const defaultValuesForForm: Partial<TeacherFormData> = {
     ...teacherToEdit,
     dateOfJoining: teacherToEdit.dateOfJoining ? parseISO(teacherToEdit.dateOfJoining) : new Date(),
+    password: '', // Clear password for edit form
   };
 
   return (
@@ -49,7 +50,7 @@ export function EditTeacherDialog({
         <DialogHeader>
           <DialogTitle>Edit Teacher Details</DialogTitle>
           <DialogDescription>
-            Update the teacher's information below.
+            Update the teacher's profile information below. Email cannot be changed. Password is managed separately.
           </DialogDescription>
         </DialogHeader>
         <TeacherForm 
@@ -57,6 +58,7 @@ export function EditTeacherDialog({
             onCancel={() => onOpenChange(false)}
             defaultValues={defaultValuesForForm}
             isLoading={isLoading}
+            isEditMode={true}
         />
       </DialogContent>
     </Dialog>

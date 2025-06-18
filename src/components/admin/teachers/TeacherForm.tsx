@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -42,6 +43,7 @@ export const teacherFormSchema = z.object({
   firstName: z.string().min(2, "First name must be at least 2 characters."),
   lastName: z.string().min(2, "Last name must be at least 2 characters."),
   email: z.string().email("Invalid email address."),
+  password: z.string().min(6, "Initial password must be at least 6 characters."),
   subject: z.string().min(1, "Subject is required."),
   dateOfJoining: z.date({
     required_error: "Date of joining is required.",
@@ -55,15 +57,17 @@ interface TeacherFormProps {
   onCancel: () => void;
   defaultValues?: Partial<TeacherFormData>;
   isLoading?: boolean;
+  isEditMode?: boolean;
 }
 
-export function TeacherForm({ onSubmit, onCancel, defaultValues, isLoading }: TeacherFormProps) {
+export function TeacherForm({ onSubmit, onCancel, defaultValues, isLoading, isEditMode = false }: TeacherFormProps) {
   const form = useForm<TeacherFormData>({
     resolver: zodResolver(teacherFormSchema),
     defaultValues: {
       firstName: '',
       lastName: '',
       email: '',
+      password: '', // Default to empty, will be set if needed
       subject: '',
       ...defaultValues,
       dateOfJoining: defaultValues?.dateOfJoining ? new Date(defaultValues.dateOfJoining) : undefined,
@@ -108,12 +112,29 @@ export function TeacherForm({ onSubmit, onCancel, defaultValues, isLoading }: Te
             <FormItem>
               <FormLabel>Email</FormLabel>
               <FormControl>
-                <Input type="email" placeholder="jane.smith@example.com" {...field} />
+                <Input type="email" placeholder="jane.smith@example.com" {...field} disabled={isEditMode} />
               </FormControl>
+              {isEditMode && <FormDescription>Email cannot be changed after creation.</FormDescription>}
               <FormMessage />
             </FormItem>
           )}
         />
+        {!isEditMode && (
+            <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                <FormItem>
+                    <FormLabel>Initial Password</FormLabel>
+                    <FormControl>
+                    <Input type="password" placeholder="Set an initial password" {...field} />
+                    </FormControl>
+                    <FormDescription>Min. 6 characters. Teacher should change this on first login.</FormDescription>
+                    <FormMessage />
+                </FormItem>
+                )}
+            />
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField
             control={form.control}
@@ -170,7 +191,7 @@ export function TeacherForm({ onSubmit, onCancel, defaultValues, isLoading }: Te
                       selected={field.value}
                       onSelect={field.onChange}
                       disabled={(date) =>
-                        date > new Date() || date < new Date("2000-01-01") // Assuming school wasn't founded before 2000
+                        date > new Date() || date < new Date("2000-01-01") 
                       }
                       initialFocus
                     />
@@ -186,10 +207,11 @@ export function TeacherForm({ onSubmit, onCancel, defaultValues, isLoading }: Te
             Cancel
           </Button>
           <Button type="submit" disabled={isLoading} className="bg-accent hover:bg-accent/90 text-accent-foreground">
-            {isLoading ? 'Saving...' : 'Save Teacher'}
+            {isLoading ? 'Saving...' : (isEditMode ? 'Save Changes' : 'Add Teacher')}
           </Button>
         </div>
       </form>
     </Form>
   );
 }
+

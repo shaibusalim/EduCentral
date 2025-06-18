@@ -30,7 +30,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type { TeacherFormData } from '@/components/admin/teachers/TeacherForm';
-import { getTeachers, addTeacherToFirestore, updateTeacherInFirestore, deleteTeacherFromFirestore } from '@/services/teacherService';
+import { getTeachers, updateTeacherInFirestore, deleteTeacherFromFirestore } from '@/services/teacherService';
+// addTeacherToFirestore import is removed as AddTeacherDialog handles the full creation.
 
 export default function TeacherManagementPage() {
   const [teachers, setTeachers] = React.useState<Teacher[]>([]);
@@ -61,21 +62,8 @@ export default function TeacherManagementPage() {
     fetchTeachers();
   }, [fetchTeachers]);
 
-  const handleAddTeacher = async (newTeacherData: Omit<Teacher, 'id'>) => {
-    try {
-      await addTeacherToFirestore(newTeacherData);
-      toast({
-        title: "Teacher Added",
-        description: `${newTeacherData.firstName} ${newTeacherData.lastName} has been successfully added.`,
-      });
-      fetchTeachers(); // Refresh list
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Failed to add teacher",
-        description: (error as Error).message,
-      });
-    }
+  const handleTeacherAdded = () => {
+    fetchTeachers(); // Just refresh the list
   };
 
   const handleOpenEditDialog = (teacher: Teacher) => {
@@ -83,11 +71,15 @@ export default function TeacherManagementPage() {
     setIsEditDialogOpen(true);
   };
 
-  const handleUpdateTeacher = async (updatedTeacherFormData: TeacherFormData) => {
+  // TeacherFormData for edit will not include password. Email is also not editable here.
+  const handleUpdateTeacher = async (updatedTeacherFormData: Omit<TeacherFormData, 'password' | 'email'>) => {
     if (!editingTeacher) return;
 
-    const dataForService: Omit<Teacher, 'id'> = {
-        ...updatedTeacherFormData,
+    // Data for service doesn't include email or password
+    const dataForService: Omit<Teacher, 'id' | 'email'> = {
+        firstName: updatedTeacherFormData.firstName,
+        lastName: updatedTeacherFormData.lastName,
+        subject: updatedTeacherFormData.subject,
         dateOfJoining: format(updatedTeacherFormData.dateOfJoining, "yyyy-MM-dd"),
     };
 
@@ -97,7 +89,7 @@ export default function TeacherManagementPage() {
         title: "Teacher Updated",
         description: `${dataForService.firstName} ${dataForService.lastName}'s details have been updated.`,
       });
-      fetchTeachers(); // Refresh list
+      fetchTeachers(); 
       setIsEditDialogOpen(false);
       setEditingTeacher(null);
     } catch (error) {
@@ -118,18 +110,20 @@ export default function TeacherManagementPage() {
     if (!deletingTeacherId) return;
     const teacherToDelete = teachers.find(t => t.id === deletingTeacherId);
     try {
+      // This deletes the teacher's profile from 'teachers' collection.
+      // Actual Firebase Auth user deletion and 'users' role deletion would be separate admin tasks.
       await deleteTeacherFromFirestore(deletingTeacherId);
       toast({
-        title: "Teacher Deleted",
-        description: `${teacherToDelete?.firstName || 'Teacher'} has been removed.`,
+        title: "Teacher Profile Deleted",
+        description: `${teacherToDelete?.firstName || 'Teacher'}'s profile has been removed. Their auth account may still exist.`,
       });
-      fetchTeachers(); // Refresh list
+      fetchTeachers(); 
       setIsDeleteDialogOpen(false);
       setDeletingTeacherId(null);
     } catch (error) {
       toast({
         variant: "destructive",
-        title: "Failed to delete teacher",
+        title: "Failed to delete teacher profile",
         description: (error as Error).message,
       });
       setIsDeleteDialogOpen(false);
@@ -143,7 +137,7 @@ export default function TeacherManagementPage() {
         title="Teacher Management"
         subtitle="Manage teacher profiles, subject assignments, and class allocations."
       >
-        <AddTeacherDialog onTeacherAdded={handleAddTeacher}>
+        <AddTeacherDialog onTeacherAdded={handleTeacherAdded}>
           <Button className="bg-accent hover:bg-accent/90 text-accent-foreground">
             <PlusCircle className="mr-2 h-4 w-4" /> Add New Teacher
           </Button>
@@ -216,13 +210,13 @@ export default function TeacherManagementPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the teacher's record from the database.
+               This action will delete the teacher's profile. Deleting their login account and role record are separate administrative tasks.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setDeletingTeacherId(null)}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDeleteTeacher} className="bg-destructive hover:bg-destructive/90">
-              Delete
+              Delete Profile
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
