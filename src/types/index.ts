@@ -24,4 +24,10 @@ export interface ClassItem {
   roomNumber?: string; // Optional
 }
 
+export interface SubjectItem {
+  id: string;
+  name: string; // e.g., "Mathematics", "Physics"
+  // Potentially add subjectCode or teacherId in the future
+}
+
 // Add other shared types here as needed
