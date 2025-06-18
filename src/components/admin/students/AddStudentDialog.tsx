@@ -8,6 +8,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogTrigger, // Added DialogTrigger here
 } from '@/components/ui/dialog';
 import { StudentForm, type StudentFormData } from './StudentForm';
 import type { Student } from '@/types';
