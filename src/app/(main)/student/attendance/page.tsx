@@ -1,7 +1,13 @@
+
+"use client"; // Assuming this might need client-side interactions or hooks in the future
+
 import { PageTitle } from '@/components/ui/PageTitle';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { UserCheck, Percent } from 'lucide-react';
 import Image from 'next/image';
+
+// Mock data for student's attendance
+const mockOverallAttendance = 92; // Example percentage
 
 export default function StudentAttendancePage() {
   return (
@@ -18,10 +24,10 @@ export default function StudentAttendancePage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="text-center">
-          <div className="flex justify-center items-center my-4">
+          <div className="flex justify-center items-center my-6">
             <Percent className="h-16 w-16 text-green-500 mr-4" />
             <div>
-              <p className="text-4xl font-bold text-primary">95%</p>
+              <p className="text-4xl font-bold text-primary">{mockOverallAttendance}%</p>
               <p className="text-muted-foreground">Overall Attendance</p>
             </div>
           </div>
@@ -34,7 +40,7 @@ export default function StudentAttendancePage() {
             data-ai-hint="calendar checkmark"
           />
           <p className="text-muted-foreground">
-            Your detailed attendance records, including daily status and overall percentage, will be displayed here.
+            Your detailed attendance records, including daily status for each subject and overall monthly summaries, will be displayed here.
           </p>
         </CardContent>
       </Card>
