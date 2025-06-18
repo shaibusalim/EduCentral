@@ -16,8 +16,20 @@ import {
 } from "@/components/ui/table";
 import type { Teacher } from '@/types';
 import { AddTeacherDialog } from '@/components/admin/teachers/AddTeacherDialog';
+import { EditTeacherDialog } from '@/components/admin/teachers/EditTeacherDialog';
 import { format, parseISO } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import type { TeacherFormData } from '@/components/admin/teachers/TeacherForm';
 
 // Mock initial teacher data
 const initialTeachers: Teacher[] = [
@@ -29,10 +41,15 @@ const initialTeachers: Teacher[] = [
 export default function TeacherManagementPage() {
   const [teachers, setTeachers] = React.useState<Teacher[]>(initialTeachers);
   const { toast } = useToast();
+  const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
+  const [editingTeacher, setEditingTeacher] = React.useState<Teacher | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
+  const [deletingTeacherId, setDeletingTeacherId] = React.useState<string | null>(null);
+
 
   const handleAddTeacher = (newTeacherData: Omit<Teacher, 'id'>) => {
     const newTeacher: Teacher = {
-      id: `t${Date.now().toString()}`, // Simple ID generation
+      id: `t${Date.now().toString()}`, 
       ...newTeacherData,
     };
     setTeachers((prevTeachers) => [newTeacher, ...prevTeachers]);
@@ -42,23 +59,47 @@ export default function TeacherManagementPage() {
     });
   };
 
-  const handleEditTeacher = (teacherId: string) => {
-    // Placeholder for edit functionality
-    console.log("Edit teacher:", teacherId);
-    toast({
-      title: "Edit Action (Placeholder)",
-      description: `Edit functionality for teacher ID ${teacherId} will be implemented here.`,
-    });
+  const handleOpenEditDialog = (teacher: Teacher) => {
+    setEditingTeacher(teacher);
+    setIsEditDialogOpen(true);
   };
 
-  const handleDeleteTeacher = (teacherId: string) => {
-    // Placeholder for delete functionality
-    setTeachers((prevTeachers) => prevTeachers.filter(teacher => teacher.id !== teacherId));
+  const handleUpdateTeacher = (updatedTeacherData: TeacherFormData) => {
+    if (!editingTeacher) return;
+
+    const updatedTeacher: Teacher = {
+      ...editingTeacher,
+      ...updatedTeacherData,
+      dateOfJoining: format(updatedTeacherData.dateOfJoining, "yyyy-MM-dd"),
+    };
+    
+    setTeachers((prevTeachers) =>
+      prevTeachers.map((t) => (t.id === updatedTeacher.id ? updatedTeacher : t))
+    );
     toast({
-      title: "Teacher Deleted (Mock)",
-      description: `Teacher ID ${teacherId} has been removed from the list.`,
+      title: "Teacher Updated",
+      description: `${updatedTeacher.firstName} ${updatedTeacher.lastName}'s details have been updated.`,
+    });
+    setIsEditDialogOpen(false);
+    setEditingTeacher(null);
+  };
+
+  const handleOpenDeleteDialog = (teacherId: string) => {
+    setDeletingTeacherId(teacherId);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteTeacher = () => {
+    if (!deletingTeacherId) return;
+    const teacherToDelete = teachers.find(t => t.id === deletingTeacherId);
+    setTeachers((prevTeachers) => prevTeachers.filter(teacher => teacher.id !== deletingTeacherId));
+    toast({
+      title: "Teacher Deleted",
+      description: `${teacherToDelete?.firstName || 'Teacher'} has been removed.`,
       variant: "destructive",
     });
+    setIsDeleteDialogOpen(false);
+    setDeletingTeacherId(null);
   };
 
   return (
@@ -106,10 +147,10 @@ export default function TeacherManagementPage() {
                       {format(parseISO(teacher.dateOfJoining), 'PPP')}
                     </TableCell>
                     <TableCell className="text-right space-x-2">
-                      <Button variant="outline" size="icon" onClick={() => handleEditTeacher(teacher.id)} aria-label="Edit teacher">
+                      <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(teacher)} aria-label="Edit teacher">
                         <Edit3 className="h-4 w-4" />
                       </Button>
-                      <Button variant="destructive" size="icon" onClick={() => handleDeleteTeacher(teacher.id)} aria-label="Delete teacher">
+                      <Button variant="destructive" size="icon" onClick={() => handleOpenDeleteDialog(teacher.id)} aria-label="Delete teacher">
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </TableCell>
@@ -120,6 +161,32 @@ export default function TeacherManagementPage() {
           )}
         </CardContent>
       </Card>
+
+      {editingTeacher && (
+        <EditTeacherDialog
+          isOpen={isEditDialogOpen}
+          onOpenChange={setIsEditDialogOpen}
+          teacherToEdit={editingTeacher}
+          onTeacherUpdated={handleUpdateTeacher}
+        />
+      )}
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the teacher's record.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeletingTeacherId(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteTeacher} className="bg-destructive hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

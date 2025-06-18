@@ -16,8 +16,21 @@ import {
 } from "@/components/ui/table";
 import type { Student } from '@/types';
 import { AddStudentDialog } from '@/components/admin/students/AddStudentDialog';
+import { EditStudentDialog } from '@/components/admin/students/EditStudentDialog';
 import { format, parseISO } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import type { StudentFormData } from '@/components/admin/students/StudentForm';
+
 
 // Mock initial student data
 const initialStudents: Student[] = [
@@ -29,10 +42,14 @@ const initialStudents: Student[] = [
 export default function StudentManagementPage() {
   const [students, setStudents] = React.useState<Student[]>(initialStudents);
   const { toast } = useToast();
+  const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
+  const [editingStudent, setEditingStudent] = React.useState<Student | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
+  const [deletingStudentId, setDeletingStudentId] = React.useState<string | null>(null);
 
   const handleAddStudent = (newStudentData: Omit<Student, 'id'>) => {
     const newStudent: Student = {
-      id: Date.now().toString(), // Simple ID generation
+      id: Date.now().toString(), 
       ...newStudentData,
     };
     setStudents((prevStudents) => [newStudent, ...prevStudents]);
@@ -42,26 +59,47 @@ export default function StudentManagementPage() {
     });
   };
 
-  const handleEditStudent = (studentId: string) => {
-    // Placeholder for edit functionality
-    console.log("Edit student:", studentId);
-    toast({
-      title: "Edit Action (Placeholder)",
-      description: `Edit functionality for student ID ${studentId} will be implemented here.`,
-    });
-    // In a real app, you would typically open an EditStudentDialog
-    // and pre-fill it with the student's data.
+  const handleOpenEditDialog = (student: Student) => {
+    setEditingStudent(student);
+    setIsEditDialogOpen(true);
   };
 
-  const handleDeleteStudent = (studentId: string) => {
-    // Placeholder for delete functionality
-    // In a real app, you would show a confirmation dialog first.
-    setStudents((prevStudents) => prevStudents.filter(student => student.id !== studentId));
+  const handleUpdateStudent = (updatedStudentData: StudentFormData) => {
+    if (!editingStudent) return;
+
+    const updatedStudent: Student = {
+      ...editingStudent,
+      ...updatedStudentData,
+      dateOfBirth: format(updatedStudentData.dateOfBirth, "yyyy-MM-dd"),
+    };
+
+    setStudents((prevStudents) =>
+      prevStudents.map((s) => (s.id === updatedStudent.id ? updatedStudent : s))
+    );
     toast({
-      title: "Student Deleted (Mock)",
-      description: `Student ID ${studentId} has been removed from the list.`,
+      title: "Student Updated",
+      description: `${updatedStudent.firstName} ${updatedStudent.lastName}'s details have been updated.`,
+    });
+    setIsEditDialogOpen(false);
+    setEditingStudent(null);
+  };
+
+  const handleOpenDeleteDialog = (studentId: string) => {
+    setDeletingStudentId(studentId);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteStudent = () => {
+    if (!deletingStudentId) return;
+    const studentToDelete = students.find(s => s.id === deletingStudentId);
+    setStudents((prevStudents) => prevStudents.filter(student => student.id !== deletingStudentId));
+    toast({
+      title: "Student Deleted",
+      description: `${studentToDelete?.firstName || 'Student'} has been removed.`,
       variant: "destructive",
     });
+    setIsDeleteDialogOpen(false);
+    setDeletingStudentId(null);
   };
 
   return (
@@ -109,10 +147,10 @@ export default function StudentManagementPage() {
                       {format(parseISO(student.dateOfBirth), 'PPP')}
                     </TableCell>
                     <TableCell className="text-right space-x-2">
-                      <Button variant="outline" size="icon" onClick={() => handleEditStudent(student.id)} aria-label="Edit student">
+                      <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(student)} aria-label="Edit student">
                         <Edit3 className="h-4 w-4" />
                       </Button>
-                      <Button variant="destructive" size="icon" onClick={() => handleDeleteStudent(student.id)} aria-label="Delete student">
+                      <Button variant="destructive" size="icon" onClick={() => handleOpenDeleteDialog(student.id)} aria-label="Delete student">
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </TableCell>
@@ -123,6 +161,32 @@ export default function StudentManagementPage() {
           )}
         </CardContent>
       </Card>
+
+      {editingStudent && (
+        <EditStudentDialog
+          isOpen={isEditDialogOpen}
+          onOpenChange={setIsEditDialogOpen}
+          studentToEdit={editingStudent}
+          onStudentUpdated={handleUpdateStudent}
+        />
+      )}
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the student's record.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeletingStudentId(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
