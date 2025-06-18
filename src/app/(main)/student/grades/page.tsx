@@ -1,8 +1,38 @@
+
+"use client"; // Assuming this might need client-side interactions or hooks in the future
+
 import { PageTitle } from '@/components/ui/PageTitle';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { FileText, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import Image from 'next/image';
+import { Download, FileText } from 'lucide-react';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from '@/components/ui/badge';
+
+// Mock data for student's grades
+const mockStudentGrades = [
+  { subject: 'Mathematics', grade: 'A', score: 92, remarks: 'Excellent understanding of concepts.' },
+  { subject: 'Physics', grade: 'B+', score: 88, remarks: 'Good effort, can improve in practicals.' },
+  { subject: 'English Literature', grade: 'A-', score: 90, remarks: 'Strong analytical skills.' },
+  { subject: 'History', grade: 'B', score: 82, remarks: 'Consistent performance.' },
+  { subject: 'Computer Science', grade: 'A', score: 95, remarks: 'Outstanding project work.' },
+  { subject: 'Physical Education', grade: 'Pass', score: null, remarks: 'Active participation.' },
+];
+
+const getGradeBadgeVariant = (grade: string | null) => {
+  if (!grade) return "secondary";
+  if (grade.startsWith('A')) return "default";
+  if (grade.startsWith('B')) return "secondary"; // Or another color
+  if (grade.startsWith('C')) return "outline";
+  if (grade.startsWith('D') || grade === 'Fail') return "destructive";
+  return "outline";
+};
 
 export default function StudentGradesPage() {
   return (
@@ -22,18 +52,39 @@ export default function StudentGradesPage() {
             Performance Overview
           </CardTitle>
         </CardHeader>
-        <CardContent className="text-center">
-           <Image 
-            src="https://placehold.co/800x400.png" 
-            alt="Student grades placeholder" 
-            width={800} 
-            height={400} 
-            className="w-full h-auto rounded-lg mb-4 object-cover"
-            data-ai-hint="grades chart"
-          />
-          <p className="text-muted-foreground">
-            Your grades, term-wise results, cumulative performance, and report card downloads will be accessible here.
-          </p>
+        <CardContent>
+          {mockStudentGrades.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">
+              Your grades are not available yet. Please check back later.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Subject</TableHead>
+                  <TableHead className="text-center">Score</TableHead>
+                  <TableHead className="text-center">Grade</TableHead>
+                  <TableHead>Remarks</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {mockStudentGrades.map((item, index) => (
+                  <TableRow key={index}>
+                    <TableCell className="font-medium">{item.subject}</TableCell>
+                    <TableCell className="text-center">{item.score ?? 'N/A'}</TableCell>
+                    <TableCell className="text-center">
+                      <Badge variant={getGradeBadgeVariant(item.grade)}>{item.grade}</Badge>
+                    </TableCell>
+                    <TableCell>{item.remarks}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+          <div className="mt-6 text-center">
+            <p className="text-lg font-semibold text-primary">Overall GPA: 3.8 / 4.0 (Example)</p>
+            <p className="text-sm text-muted-foreground">Based on the current term's performance.</p>
+          </div>
         </CardContent>
       </Card>
     </div>
