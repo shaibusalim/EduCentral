@@ -9,7 +9,7 @@ export interface Student {
 }
 
 export interface Teacher {
-  id: string;
+  id: string; // Firebase UID
   firstName: string;
   lastName: string;
   email: string;
@@ -20,7 +20,7 @@ export interface Teacher {
 export interface ClassItem {
   id: string;
   name: string; // e.g., "Grade 10 Section A", "Standard 5"
-  assignedTeacherName: string; // For simplicity, just the name. Could be teacherId later.
+  assignedTeacherId?: string | null; // Firebase UID of the assigned teacher
   roomNumber?: string; // Optional
 }
 

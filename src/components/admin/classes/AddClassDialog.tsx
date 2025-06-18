@@ -11,10 +11,10 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { ClassForm, type ClassFormData } from './ClassForm';
-import type { ClassItem } from '@/types';
+// No longer need ClassItem type here as ClassFormData is used for submission
 
 interface AddClassDialogProps {
-  onClassAdded: (newClass: Omit<ClassItem, 'id'>) => void;
+  onClassAdded: (newClassData: ClassFormData) => void; // Changed from Omit<ClassItem, 'id'>
   children: React.ReactNode;
 }
 
@@ -24,9 +24,10 @@ export function AddClassDialog({ onClassAdded, children }: AddClassDialogProps) 
 
   const handleSubmit = async (data: ClassFormData) => {
     setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
-    
-    onClassAdded(data);
+    // Simulate API call if needed or directly call onClassAdded
+    // The actual Firestore call is now in the parent page
+    onClassAdded(data); 
+    // await new Promise(resolve => setTimeout(resolve, 1000)); // Keep for simulation if desired
     setIsLoading(false);
     setIsOpen(false);
   };
@@ -45,6 +46,7 @@ export function AddClassDialog({ onClassAdded, children }: AddClassDialogProps) 
             onSubmit={handleSubmit} 
             onCancel={() => setIsOpen(false)}
             isLoading={isLoading}
+            // No defaultValues needed for Add dialog, form handles its own defaults
         />
       </DialogContent>
     </Dialog>

@@ -4,59 +4,64 @@
 import * as React from 'react';
 import { PageTitle } from '@/components/ui/PageTitle';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { School, BookOpen, MapPin, Loader2 } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { School, BookOpen, MapPin, Loader2, UserCircle } from 'lucide-react';
 import { getClasses } from '@/services/classService';
 import { getTeachers } from '@/services/teacherService';
 import type { ClassItem, Teacher } from '@/types';
 import { useToast } from '@/hooks/use-toast';
+import { useAppContext } from '@/contexts/AppContext';
 
 interface DisplayedTeacherClass {
-  id: string;
-  name: string;
-  subject: string;
+  id: string; // class id
+  name: string; // class name
+  subject: string; // teacher's primary subject
   roomNumber?: string;
-  // period and studentCount are omitted as they are not easily available from current Firestore structure
 }
-
-// SIMULATION: In a real app, this would come from auth context
-const CURRENT_TEACHER_NAME = "Ms. Emily Clark"; 
 
 export default function TeacherClassesPage() {
   const [teacherClasses, setTeacherClasses] = React.useState<DisplayedTeacherClass[]>([]);
+  const [currentTeacher, setCurrentTeacher] = React.useState<Teacher | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const { toast } = useToast();
+  const { authUser } = useAppContext();
 
   React.useEffect(() => {
-    const fetchTeacherClasses = async () => {
+    const fetchTeacherAndClassData = async () => {
+      if (!authUser || !authUser.uid) {
+        setError("User not authenticated. Please log in.");
+        setIsLoading(false);
+        return;
+      }
+
       setIsLoading(true);
       setError(null);
+      const currentTeacherId = authUser.uid;
+
       try {
-        const allClasses = await getClasses();
-        const allTeachers = await getTeachers();
+        const [allClassesData, allTeachersData] = await Promise.all([
+          getClasses(),
+          getTeachers()
+        ]);
 
-        const currentTeacher = allTeachers.find(
-          (t) => `${t.firstName} ${t.lastName}` === CURRENT_TEACHER_NAME
-        );
-
-        if (!currentTeacher) {
-          // If current "mock" teacher is not found, show no classes.
-          // In a real app, this scenario might mean the teacher has no classes or there's a data issue.
+        const foundTeacher = allTeachersData.find(t => t.id === currentTeacherId);
+        if (!foundTeacher) {
+          setError("Teacher profile not found for the logged-in user.");
           setTeacherClasses([]);
-          // Optionally, set an error or info message if the teacher identity is critical
-          // setError(`Teacher profile for ${CURRENT_TEACHER_NAME} not found.`);
+          setCurrentTeacher(null);
+          setIsLoading(false);
           return;
         }
-        
-        const filteredClasses = allClasses.filter(
-          (classItem) => classItem.assignedTeacherName === CURRENT_TEACHER_NAME
+        setCurrentTeacher(foundTeacher);
+
+        const filteredClasses = allClassesData.filter(
+          (classItem) => classItem.assignedTeacherId === currentTeacherId
         );
 
         const displayedClasses: DisplayedTeacherClass[] = filteredClasses.map((classItem) => ({
           id: classItem.id,
           name: classItem.name,
-          subject: currentTeacher.subject, // Use the teacher's primary subject
+          subject: foundTeacher.subject, 
           roomNumber: classItem.roomNumber,
         }));
 
@@ -74,14 +79,18 @@ export default function TeacherClassesPage() {
       }
     };
 
-    fetchTeacherClasses();
-  }, [toast]);
+    fetchTeacherAndClassData();
+  }, [authUser, toast]);
+
+  const pageSubtitle = currentTeacher 
+    ? `Classes assigned to ${currentTeacher.firstName} ${currentTeacher.lastName}.`
+    : "Your assigned classes.";
 
   return (
     <div className="flex flex-col gap-6">
       <PageTitle 
         title="My Classes"
-        subtitle={`Classes assigned to ${CURRENT_TEACHER_NAME}.`}
+        subtitle={pageSubtitle}
       />
       {isLoading ? (
         <div className="flex justify-center items-center py-10">
@@ -110,7 +119,6 @@ export default function TeacherClassesPage() {
                     <School className="h-6 w-6" />
                     {classInfo.name}
                   </CardTitle>
-                  {/* Period Badge removed as data is not available */}
                 </div>
                 <CardDescription className="flex items-center gap-1">
                     <BookOpen className="h-4 w-4 text-muted-foreground" /> Subject: {classInfo.subject}
@@ -123,7 +131,6 @@ export default function TeacherClassesPage() {
                     <span>Room: {classInfo.roomNumber}</span>
                   </div>
                 )}
-                {/* Student count removed as data is not available */}
               </CardContent>
             </Card>
           ))}

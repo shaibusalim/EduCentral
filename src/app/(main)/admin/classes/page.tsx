@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { ClassItem } from '@/types';
+import type { ClassItem, Teacher } from '@/types';
 import { AddClassDialog } from '@/components/admin/classes/AddClassDialog';
 import { EditClassDialog } from '@/components/admin/classes/EditClassDialog';
 import { useToast } from '@/hooks/use-toast';
@@ -30,9 +30,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { ClassFormData } from '@/components/admin/classes/ClassForm';
 import { getClasses, addClassToFirestore, updateClassInFirestore, deleteClassFromFirestore } from '@/services/classService';
+import { getTeachers } from '@/services/teacherService';
 
 export default function ClassManagementPage() {
   const [classes, setClasses] = React.useState<ClassItem[]>([]);
+  const [allTeachers, setAllTeachers] = React.useState<Teacher[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const { toast } = useToast();
   const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
@@ -40,16 +42,24 @@ export default function ClassManagementPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [deletingClassId, setDeletingClassId] = React.useState<string | null>(null);
 
-  const fetchClasses = React.useCallback(async () => {
+  const teacherNameMap = React.useMemo(() => {
+    return new Map(allTeachers.map(t => [t.id, `${t.firstName} ${t.lastName}`]));
+  }, [allTeachers]);
+
+  const fetchData = React.useCallback(async () => {
     setIsLoading(true);
     try {
-      const fetchedClasses = await getClasses();
+      const [fetchedClasses, fetchedTeachers] = await Promise.all([
+        getClasses(),
+        getTeachers()
+      ]);
       setClasses(fetchedClasses);
+      setAllTeachers(fetchedTeachers);
     } catch (error) {
       toast({
         variant: "destructive",
-        title: "Failed to load classes",
-        description: (error as Error).message || "Could not fetch class data from the server.",
+        title: "Failed to load data",
+        description: (error as Error).message || "Could not fetch class or teacher data from the server.",
       });
     } finally {
       setIsLoading(false);
@@ -57,17 +67,23 @@ export default function ClassManagementPage() {
   }, [toast]);
 
   React.useEffect(() => {
-    fetchClasses();
-  }, [fetchClasses]);
+    fetchData();
+  }, [fetchData]);
 
-  const handleAddClass = async (newClassData: Omit<ClassItem, 'id'>) => {
+  const handleAddClass = async (newClassData: ClassFormData) => { // ClassFormData has assignedTeacherId
     try {
-      await addClassToFirestore(newClassData);
+      // We no longer store assignedTeacherName directly in ClassItem, it's derived
+      const dataForFirestore: Omit<ClassItem, 'id' | 'assignedTeacherName'> = {
+        name: newClassData.name,
+        assignedTeacherId: newClassData.assignedTeacherId || null,
+        roomNumber: newClassData.roomNumber,
+      };
+      await addClassToFirestore(dataForFirestore);
       toast({
         title: "Class Added",
         description: `${newClassData.name} has been successfully added.`,
       });
-      fetchClasses(); // Refresh list
+      fetchData(); 
     } catch (error) {
       toast({
         variant: "destructive",
@@ -85,12 +101,17 @@ export default function ClassManagementPage() {
   const handleUpdateClass = async (updatedClassFormData: ClassFormData) => {
     if (!editingClass) return;
     try {
-      await updateClassInFirestore(editingClass.id, updatedClassFormData);
+      const dataForFirestore: Omit<ClassItem, 'id' | 'assignedTeacherName'> = {
+        name: updatedClassFormData.name,
+        assignedTeacherId: updatedClassFormData.assignedTeacherId || null,
+        roomNumber: updatedClassFormData.roomNumber,
+      };
+      await updateClassInFirestore(editingClass.id, dataForFirestore);
       toast({
         title: "Class Updated",
         description: `${updatedClassFormData.name}'s details have been updated.`,
       });
-      fetchClasses(); // Refresh list
+      fetchData(); 
       setIsEditDialogOpen(false);
       setEditingClass(null);
     } catch (error) {
@@ -116,7 +137,7 @@ export default function ClassManagementPage() {
         title: "Class Deleted",
         description: `${classToDelete?.name || 'Class'} has been removed.`,
       });
-      fetchClasses(); // Refresh list
+      fetchData(); 
       setIsDeleteDialogOpen(false);
       setDeletingClassId(null);
     } catch (error) {
@@ -173,7 +194,7 @@ export default function ClassManagementPage() {
                 {classes.map((classItem) => (
                   <TableRow key={classItem.id}>
                     <TableCell>{classItem.name}</TableCell>
-                    <TableCell>{classItem.assignedTeacherName}</TableCell>
+                    <TableCell>{classItem.assignedTeacherId ? teacherNameMap.get(classItem.assignedTeacherId) || 'Unknown Teacher' : 'N/A'}</TableCell>
                     <TableCell>{classItem.roomNumber || 'N/A'}</TableCell>
                     <TableCell className="text-right space-x-2">
                       <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(classItem)} aria-label="Edit class">

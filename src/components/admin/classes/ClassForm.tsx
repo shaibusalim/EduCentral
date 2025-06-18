@@ -15,10 +15,15 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import type { Teacher } from '@/types';
+import { getTeachers } from '@/services/teacherService';
+import { useToast } from '@/hooks/use-toast';
+import { Loader2 } from 'lucide-react';
 
 export const classFormSchema = z.object({
   name: z.string().min(3, "Class name must be at least 3 characters."),
-  assignedTeacherName: z.string().min(2, "Teacher's name must be at least 2 characters."),
+  assignedTeacherId: z.string().optional().nullable(),
   roomNumber: z.string().optional(),
 });
 
@@ -27,20 +32,52 @@ export type ClassFormData = z.infer<typeof classFormSchema>;
 interface ClassFormProps {
   onSubmit: (data: ClassFormData) => void;
   onCancel: () => void;
-  defaultValues?: Partial<ClassFormData>;
+  defaultValues?: Partial<ClassFormData & { assignedTeacherName?: string }>; // assignedTeacherName is not part of schema but might be in initial display data
   isLoading?: boolean;
 }
 
 export function ClassForm({ onSubmit, onCancel, defaultValues, isLoading }: ClassFormProps) {
+  const [teachers, setTeachers] = React.useState<Teacher[]>([]);
+  const [isLoadingTeachers, setIsLoadingTeachers] = React.useState(true);
+  const { toast } = useToast();
+
+  React.useEffect(() => {
+    const fetchTeacherData = async () => {
+      setIsLoadingTeachers(true);
+      try {
+        const fetchedTeachers = await getTeachers();
+        setTeachers(fetchedTeachers);
+      } catch (error) {
+        toast({
+          variant: "destructive",
+          title: "Failed to load teachers",
+          description: (error as Error).message,
+        });
+      } finally {
+        setIsLoadingTeachers(false);
+      }
+    };
+    fetchTeacherData();
+  }, [toast]);
+
   const form = useForm<ClassFormData>({
     resolver: zodResolver(classFormSchema),
     defaultValues: {
-      name: '',
-      assignedTeacherName: '',
-      roomNumber: '',
-      ...defaultValues,
+      name: defaultValues?.name || '',
+      assignedTeacherId: defaultValues?.assignedTeacherId || null,
+      roomNumber: defaultValues?.roomNumber || '',
     },
   });
+  
+  React.useEffect(() => {
+    // Reset form if defaultValues change (e.g. when editing a different item)
+    form.reset({
+      name: defaultValues?.name || '',
+      assignedTeacherId: defaultValues?.assignedTeacherId || null,
+      roomNumber: defaultValues?.roomNumber || '',
+    });
+  }, [defaultValues, form]);
+
 
   return (
     <Form {...form}>
@@ -60,13 +97,40 @@ export function ClassForm({ onSubmit, onCancel, defaultValues, isLoading }: Clas
         />
         <FormField
           control={form.control}
-          name="assignedTeacherName"
+          name="assignedTeacherId"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Assigned Teacher's Name</FormLabel>
-              <FormControl>
-                <Input placeholder="e.g., Ms. Emily Clark" {...field} />
-              </FormControl>
+              <FormLabel>Assigned Teacher</FormLabel>
+              <Select 
+                onValueChange={field.onChange} 
+                value={field.value || ""}
+                disabled={isLoadingTeachers || teachers.length === 0}
+              >
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder={
+                        isLoadingTeachers ? "Loading teachers..." : 
+                        (teachers.length === 0 ? "No teachers available" : "Select a teacher (Optional)")
+                    } />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {isLoadingTeachers ? (
+                    <div className="flex items-center justify-center p-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    </div>
+                  ) : (
+                    <>
+                      <SelectItem value=""><em>None</em></SelectItem>
+                      {teachers.map((teacher) => (
+                        <SelectItem key={teacher.id} value={teacher.id}>
+                          {`${teacher.firstName} ${teacher.lastName}`}
+                        </SelectItem>
+                      ))}
+                    </>
+                  )}
+                </SelectContent>
+              </Select>
               <FormMessage />
             </FormItem>
           )}
@@ -88,7 +152,7 @@ export function ClassForm({ onSubmit, onCancel, defaultValues, isLoading }: Clas
           <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
             Cancel
           </Button>
-          <Button type="submit" disabled={isLoading} className="bg-accent hover:bg-accent/90 text-accent-foreground">
+          <Button type="submit" disabled={isLoading || isLoadingTeachers} className="bg-accent hover:bg-accent/90 text-accent-foreground">
             {isLoading ? 'Saving...' : 'Save Class'}
           </Button>
         </div>

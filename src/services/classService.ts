@@ -20,7 +20,7 @@ const classesCollectionRef = collection(db, 'classes');
 
 interface ClassDocumentData {
   name: string;
-  assignedTeacherName: string;
+  assignedTeacherId?: string | null; // Changed from assignedTeacherName
   roomNumber?: string;
   createdAt?: Timestamp;
 }
@@ -30,8 +30,8 @@ const fromFirestore = (docSnap: any): ClassItem => {
   return {
     id: docSnap.id,
     name: data.name,
-    assignedTeacherName: data.assignedTeacherName,
-    roomNumber: data.roomNumber || '', // Ensure roomNumber is a string, even if undefined
+    assignedTeacherId: data.assignedTeacherId || null, // Ensure it's null if not present
+    roomNumber: data.roomNumber || '', 
   };
 };
 
@@ -46,11 +46,11 @@ export const getClasses = async (): Promise<ClassItem[]> => {
   }
 };
 
-export const addClassToFirestore = async (classData: Omit<ClassItem, 'id'>): Promise<ClassItem> => {
+export const addClassToFirestore = async (classData: Omit<ClassItem, 'id' | 'assignedTeacherName'>): Promise<ClassItem> => {
   try {
     const dataToSave: ClassDocumentData & { createdAt: Timestamp } = {
       name: classData.name,
-      assignedTeacherName: classData.assignedTeacherName,
+      assignedTeacherId: classData.assignedTeacherId || null,
       roomNumber: classData.roomNumber,
       createdAt: serverTimestamp() as Timestamp,
     };
@@ -58,6 +58,7 @@ export const addClassToFirestore = async (classData: Omit<ClassItem, 'id'>): Pro
     return {
       ...classData,
       id: docRef.id,
+      assignedTeacherId: classData.assignedTeacherId || null,
     };
   } catch (error) {
     console.error("Error adding class: ", error);
@@ -65,13 +66,12 @@ export const addClassToFirestore = async (classData: Omit<ClassItem, 'id'>): Pro
   }
 };
 
-export const updateClassInFirestore = async (classId: string, classData: Omit<ClassItem, 'id'>): Promise<void> => {
+export const updateClassInFirestore = async (classId: string, classData: Omit<ClassItem, 'id' | 'assignedTeacherName'>): Promise<void> => {
   try {
     const classDocRef = doc(db, 'classes', classId);
-    // Ensure all fields intended for update are present
     const dataToUpdate: Partial<ClassDocumentData> = {
         name: classData.name,
-        assignedTeacherName: classData.assignedTeacherName,
+        assignedTeacherId: classData.assignedTeacherId || null,
         roomNumber: classData.roomNumber,
     };
     await updateDoc(classDocRef, dataToUpdate);
