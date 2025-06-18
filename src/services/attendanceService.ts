@@ -13,12 +13,14 @@ import {
   Timestamp,
   DocumentData,
   QueryDocumentSnapshot,
+  orderBy,
 } from 'firebase/firestore';
 import type { AttendanceRecord, AttendanceStatus } from '@/types';
 
 const attendanceCollectionRef = collection(db, 'attendanceRecords');
 
-const fromFirestore = (docSnap: QueryDocumentSnapshot<DocumentData>): Omit<AttendanceRecord, 'studentName' | 'className'> & { id: string } => {
+// Adjusted to return fields relevant for various contexts
+const fromFirestoreToAttendanceRecord = (docSnap: QueryDocumentSnapshot<DocumentData>): Omit<AttendanceRecord, 'studentName' | 'className'> & { id: string } => {
   const data = docSnap.data();
   return {
     id: docSnap.id,
@@ -37,10 +39,25 @@ export const getAttendanceForClass = async (classId: string, date: string): Prom
       where('date', '==', date)
     );
     const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(fromFirestore);
+    return querySnapshot.docs.map(fromFirestoreToAttendanceRecord);
   } catch (error) {
-    console.error('Error fetching attendance records: ', error);
-    throw new Error('Failed to fetch attendance records.');
+    console.error('Error fetching attendance records for class: ', error);
+    throw new Error('Failed to fetch attendance records for class.');
+  }
+};
+
+export const getAttendanceForStudent = async (studentId: string): Promise<Array<Omit<AttendanceRecord, 'studentName' | 'className'> & { id: string }>> => {
+  try {
+    const q = query(
+      attendanceCollectionRef,
+      where('studentId', '==', studentId),
+      orderBy('date', 'desc') // Show most recent first
+    );
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(fromFirestoreToAttendanceRecord);
+  } catch (error) {
+    console.error(`Error fetching attendance records for student ${studentId}: `, error);
+    throw new Error(`Failed to fetch attendance records for student ${studentId}.`);
   }
 };
 
@@ -52,7 +69,6 @@ export const saveOrUpdateStudentAttendance = async (
   try {
     const batch = writeBatch(db);
 
-    // Fetch existing records for this class and date to determine updates vs. new entries
     const existingRecordsQuery = query(
       attendanceCollectionRef,
       where('classId', '==', classId),
@@ -65,29 +81,29 @@ export const saveOrUpdateStudentAttendance = async (
     });
 
     for (const attendance of studentAttendances) {
-      if (attendance.status === 'unmarked') continue; // Don't save 'unmarked' status
+      if (attendance.status === 'unmarked') continue; 
 
       const existingRecord = existingRecordsMap.get(attendance.studentId);
 
+      const payload = {
+        studentId: attendance.studentId,
+        classId: classId,
+        date: date,
+        status: attendance.status,
+        updatedAt: serverTimestamp() as Timestamp,
+      };
+
       if (existingRecord) {
-        // Update existing record if status changed
         if (existingRecord.data.status !== attendance.status) {
           const recordRef = doc(db, 'attendanceRecords', existingRecord.id);
-          batch.update(recordRef, {
-            status: attendance.status,
-            updatedAt: serverTimestamp() as Timestamp,
-          });
+          batch.update(recordRef, payload);
         }
       } else {
-        // Create new record
         const newRecordRef = doc(collection(db, 'attendanceRecords'));
         batch.set(newRecordRef, {
-          studentId: attendance.studentId,
-          classId: classId,
-          date: date,
-          status: attendance.status,
+          ...payload,
+          // studentName: attendance.studentName, // Denormalize if needed, but not part of fromFirestoreToAttendanceRecord
           createdAt: serverTimestamp() as Timestamp,
-          updatedAt: serverTimestamp() as Timestamp,
         });
       }
     }
