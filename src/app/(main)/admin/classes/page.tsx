@@ -5,7 +5,7 @@ import * as React from 'react';
 import { PageTitle } from '@/components/ui/PageTitle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { PlusCircle, School, Edit3, Trash2 } from 'lucide-react';
+import { PlusCircle, School, Edit3, Trash2, Loader2 } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -29,32 +29,52 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type { ClassFormData } from '@/components/admin/classes/ClassForm';
-
-// Mock initial class data
-const initialClasses: ClassItem[] = [
-  { id: 'c1', name: 'Grade 10A', assignedTeacherName: 'Emily Clark', roomNumber: '101' },
-  { id: 'c2', name: 'Grade 9B', assignedTeacherName: 'David Wilson', roomNumber: '102' },
-  { id: 'c3', name: 'Grade 11C', assignedTeacherName: 'Sarah Garcia', roomNumber: '201' },
-];
+import { getClasses, addClassToFirestore, updateClassInFirestore, deleteClassFromFirestore } from '@/services/classService';
 
 export default function ClassManagementPage() {
-  const [classes, setClasses] = React.useState<ClassItem[]>(initialClasses);
+  const [classes, setClasses] = React.useState<ClassItem[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
   const { toast } = useToast();
   const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
   const [editingClass, setEditingClass] = React.useState<ClassItem | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [deletingClassId, setDeletingClassId] = React.useState<string | null>(null);
 
-  const handleAddClass = (newClassData: Omit<ClassItem, 'id'>) => {
-    const newClass: ClassItem = {
-      id: `c${Date.now().toString()}`, 
-      ...newClassData,
-    };
-    setClasses((prevClasses) => [newClass, ...prevClasses]);
-    toast({
-      title: "Class Added",
-      description: `${newClass.name} has been successfully added.`,
-    });
+  const fetchClasses = React.useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const fetchedClasses = await getClasses();
+      setClasses(fetchedClasses);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Failed to load classes",
+        description: (error as Error).message || "Could not fetch class data from the server.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast]);
+
+  React.useEffect(() => {
+    fetchClasses();
+  }, [fetchClasses]);
+
+  const handleAddClass = async (newClassData: Omit<ClassItem, 'id'>) => {
+    try {
+      await addClassToFirestore(newClassData);
+      toast({
+        title: "Class Added",
+        description: `${newClassData.name} has been successfully added.`,
+      });
+      fetchClasses(); // Refresh list
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Failed to add class",
+        description: (error as Error).message,
+      });
+    }
   };
 
   const handleOpenEditDialog = (classItem: ClassItem) => {
@@ -62,23 +82,24 @@ export default function ClassManagementPage() {
     setIsEditDialogOpen(true);
   };
 
-  const handleUpdateClass = (updatedClassData: ClassFormData) => {
+  const handleUpdateClass = async (updatedClassFormData: ClassFormData) => {
     if (!editingClass) return;
-
-    const updatedClass: ClassItem = {
-      ...editingClass,
-      ...updatedClassData,
-    };
-
-    setClasses((prevClasses) =>
-      prevClasses.map((c) => (c.id === updatedClass.id ? updatedClass : c))
-    );
-    toast({
-      title: "Class Updated",
-      description: `${updatedClass.name}'s details have been updated.`,
-    });
-    setIsEditDialogOpen(false);
-    setEditingClass(null);
+    try {
+      await updateClassInFirestore(editingClass.id, updatedClassFormData);
+      toast({
+        title: "Class Updated",
+        description: `${updatedClassFormData.name}'s details have been updated.`,
+      });
+      fetchClasses(); // Refresh list
+      setIsEditDialogOpen(false);
+      setEditingClass(null);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Failed to update class",
+        description: (error as Error).message,
+      });
+    }
   };
 
   const handleOpenDeleteDialog = (classId: string) => {
@@ -86,17 +107,27 @@ export default function ClassManagementPage() {
     setIsDeleteDialogOpen(true);
   };
 
-  const confirmDeleteClass = () => {
+  const confirmDeleteClass = async () => {
     if (!deletingClassId) return;
     const classToDelete = classes.find(c => c.id === deletingClassId);
-    setClasses((prevClasses) => prevClasses.filter(c => c.id !== deletingClassId));
-    toast({
-      title: "Class Deleted",
-      description: `${classToDelete?.name || 'Class'} has been removed.`,
-      variant: "destructive",
-    });
-    setIsDeleteDialogOpen(false);
-    setDeletingClassId(null);
+    try {
+      await deleteClassFromFirestore(deletingClassId);
+      toast({
+        title: "Class Deleted",
+        description: `${classToDelete?.name || 'Class'} has been removed.`,
+      });
+      fetchClasses(); // Refresh list
+      setIsDeleteDialogOpen(false);
+      setDeletingClassId(null);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Failed to delete class",
+        description: (error as Error).message,
+      });
+      setIsDeleteDialogOpen(false);
+      setDeletingClassId(null);
+    }
   };
 
   return (
@@ -119,7 +150,12 @@ export default function ClassManagementPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {classes.length === 0 ? (
+          {isLoading ? (
+            <div className="flex justify-center items-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="ml-2 text-muted-foreground">Loading classes...</p>
+            </div>
+          ) : classes.length === 0 ? (
             <p className="text-center text-muted-foreground py-8">
               No classes found. Click "Add New Class" to get started.
             </p>
@@ -169,7 +205,7 @@ export default function ClassManagementPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the class record.
+              This action cannot be undone. This will permanently delete the class record from the database.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
