@@ -52,5 +52,15 @@ export interface AttendanceRecord {
   status: AttendanceStatus;
   className?: string; // Denormalized for easier display if needed
 }
+
+export interface GradeRecord {
+  id?: string; // Firestore document ID
+  studentId: string;
+  classId: string;
+  assessmentName: string; // e.g., "Mid-Term Exam", "Homework 1", "Final Grade"
+  grade: string; // e.g., "A+", "85%", "Pass"
+  remarks: string; // Optional comments from the teacher
+  // studentName and className could be denormalized here if frequently needed for display without extra lookups
+}
 // Add other shared types here as needed
 
