@@ -19,7 +19,7 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import type { FeeRecord } from '@/types';
 import { getFeesForStudent } from '@/services/feeService';
-import { format, parseISO, min, isValid } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 
 // SIMULATION: In a real app, this would come from auth context or parent's profile
 const CURRENT_CHILD_STUDENT_ID = "student123"; // Ensure this student ID has fee data in Firestore
@@ -67,9 +67,9 @@ export default function ParentFeesPage() {
 
   const getStatusBadgeVariant = (status: FeeRecord['status']) => {
     switch (status) {
-      case 'paid': return 'default'; // Typically green, using primary for now
+      case 'paid': return 'default'; 
       case 'pending': return 'secondary';
-      case 'partially_paid': return 'outline'; // e.g. yellow/orange
+      case 'partially_paid': return 'outline'; 
       case 'overdue': return 'destructive';
       default: return 'secondary';
     }
@@ -77,9 +77,9 @@ export default function ParentFeesPage() {
    const getStatusBadgeColorClass = (status: FeeRecord['status']) => {
     switch (status) {
       case 'paid': return 'bg-green-500 hover:bg-green-600';
-      case 'pending': return ''; // default secondary
+      case 'pending': return ''; 
       case 'partially_paid': return 'border-yellow-500 text-yellow-700'; 
-      case 'overdue': return ''; // default destructive
+      case 'overdue': return ''; 
       default: return '';
     }
   };
@@ -167,9 +167,9 @@ export default function ParentFeesPage() {
                   <TableBody>
                     {feeRecords.map((fee) => (
                       <TableRow key={fee.id}>
-                        <TableCell>{isValid(parseISO(fee.issuedDate)) ? format(parseISO(fee.issuedDate), 'PP') : fee.issuedDate}</TableCell>
+                        <TableCell>{isValid(parseISO(fee.issuedDate)) ? format(parseISO(fee.issuedDate), 'PPP') : fee.issuedDate}</TableCell>
                         <TableCell className="font-medium">{fee.description}</TableCell>
-                        <TableCell>{isValid(parseISO(fee.dueDate)) ? format(parseISO(fee.dueDate), 'PP') : fee.dueDate}</TableCell>
+                        <TableCell>{isValid(parseISO(fee.dueDate)) ? format(parseISO(fee.dueDate), 'PPP') : fee.dueDate}</TableCell>
                         <TableCell className="text-right">${fee.amountDue.toFixed(2)}</TableCell>
                         <TableCell className="text-right">${fee.amountPaid.toFixed(2)}</TableCell>
                         <TableCell className="text-center">
@@ -207,3 +207,4 @@ export default function ParentFeesPage() {
     </div>
   );
 }
+

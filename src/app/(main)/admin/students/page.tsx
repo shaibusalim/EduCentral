@@ -83,7 +83,7 @@ export default function StudentManagementPage() {
     setIsEditDialogOpen(true);
   };
 
-  const handleUpdateStudent = async (updatedStudentForm Data: StudentFormData) => {
+  const handleUpdateStudent = async (updatedStudentFormData: StudentFormData) => {
     if (!editingStudent) return;
 
     const dataForService: Omit<Student, 'id'> = {
@@ -233,3 +233,4 @@ export default function StudentManagementPage() {
     </div>
   );
 }
+
