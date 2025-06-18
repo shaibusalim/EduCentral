@@ -5,7 +5,7 @@ import * as React from 'react';
 import { PageTitle } from '@/components/ui/PageTitle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { PlusCircle, Users, Edit3, Trash2 } from 'lucide-react';
+import { PlusCircle, Users, Edit3, Trash2, Loader2 } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -30,33 +30,52 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type { StudentFormData } from '@/components/admin/students/StudentForm';
-
-
-// Mock initial student data
-const initialStudents: Student[] = [
-  { id: '1', firstName: 'Alice', lastName: 'Smith', email: 'alice@example.com', grade: 'Grade 10', dateOfBirth: '2008-05-15' },
-  { id: '2', firstName: 'Bob', lastName: 'Johnson', email: 'bob@example.com', grade: 'Grade 9', dateOfBirth: '2009-02-20' },
-  { id: '3', firstName: 'Charlie', lastName: 'Brown', email: 'charlie@example.com', grade: 'Grade 11', dateOfBirth: '2007-11-10' },
-];
+import { getStudents, addStudentToFirestore, updateStudentInFirestore, deleteStudentFromFirestore } from '@/services/studentService';
 
 export default function StudentManagementPage() {
-  const [students, setStudents] = React.useState<Student[]>(initialStudents);
+  const [students, setStudents] = React.useState<Student[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
   const { toast } = useToast();
   const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false);
   const [editingStudent, setEditingStudent] = React.useState<Student | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [deletingStudentId, setDeletingStudentId] = React.useState<string | null>(null);
 
-  const handleAddStudent = (newStudentData: Omit<Student, 'id'>) => {
-    const newStudent: Student = {
-      id: Date.now().toString(), 
-      ...newStudentData,
-    };
-    setStudents((prevStudents) => [newStudent, ...prevStudents]);
-    toast({
-      title: "Student Added",
-      description: `${newStudent.firstName} ${newStudent.lastName} has been successfully added.`,
-    });
+  const fetchStudents = React.useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const fetchedStudents = await getStudents();
+      setStudents(fetchedStudents);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Failed to load students",
+        description: (error as Error).message || "Could not fetch student data from the server.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast]);
+
+  React.useEffect(() => {
+    fetchStudents();
+  }, [fetchStudents]);
+
+  const handleAddStudent = async (newStudentData: Omit<Student, 'id'>) => {
+    try {
+      await addStudentToFirestore(newStudentData);
+      toast({
+        title: "Student Added",
+        description: `${newStudentData.firstName} ${newStudentData.lastName} has been successfully added.`,
+      });
+      fetchStudents(); // Refresh list
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Failed to add student",
+        description: (error as Error).message,
+      });
+    }
   };
 
   const handleOpenEditDialog = (student: Student) => {
@@ -64,24 +83,33 @@ export default function StudentManagementPage() {
     setIsEditDialogOpen(true);
   };
 
-  const handleUpdateStudent = (updatedStudentData: StudentFormData) => {
+  const handleUpdateStudent = async (updatedStudentForm Data: StudentFormData) => {
     if (!editingStudent) return;
 
-    const updatedStudent: Student = {
-      ...editingStudent,
-      ...updatedStudentData,
-      dateOfBirth: format(updatedStudentData.dateOfBirth, "yyyy-MM-dd"),
+    const dataForService: Omit<Student, 'id'> = {
+        firstName: updatedStudentFormData.firstName,
+        lastName: updatedStudentFormData.lastName,
+        email: updatedStudentFormData.email,
+        grade: updatedStudentFormData.grade,
+        dateOfBirth: format(updatedStudentFormData.dateOfBirth, "yyyy-MM-dd"),
     };
 
-    setStudents((prevStudents) =>
-      prevStudents.map((s) => (s.id === updatedStudent.id ? updatedStudent : s))
-    );
-    toast({
-      title: "Student Updated",
-      description: `${updatedStudent.firstName} ${updatedStudent.lastName}'s details have been updated.`,
-    });
-    setIsEditDialogOpen(false);
-    setEditingStudent(null);
+    try {
+      await updateStudentInFirestore(editingStudent.id, dataForService);
+      toast({
+        title: "Student Updated",
+        description: `${dataForService.firstName} ${dataForService.lastName}'s details have been updated.`,
+      });
+      fetchStudents(); // Refresh list
+      setIsEditDialogOpen(false);
+      setEditingStudent(null);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Failed to update student",
+        description: (error as Error).message,
+      });
+    }
   };
 
   const handleOpenDeleteDialog = (studentId: string) => {
@@ -89,17 +117,27 @@ export default function StudentManagementPage() {
     setIsDeleteDialogOpen(true);
   };
 
-  const confirmDeleteStudent = () => {
+  const confirmDeleteStudent = async () => {
     if (!deletingStudentId) return;
     const studentToDelete = students.find(s => s.id === deletingStudentId);
-    setStudents((prevStudents) => prevStudents.filter(student => student.id !== deletingStudentId));
-    toast({
-      title: "Student Deleted",
-      description: `${studentToDelete?.firstName || 'Student'} has been removed.`,
-      variant: "destructive",
-    });
-    setIsDeleteDialogOpen(false);
-    setDeletingStudentId(null);
+    try {
+      await deleteStudentFromFirestore(deletingStudentId);
+      toast({
+        title: "Student Deleted",
+        description: `${studentToDelete?.firstName || 'Student'} has been removed.`,
+      });
+      fetchStudents(); // Refresh list
+      setIsDeleteDialogOpen(false);
+      setDeletingStudentId(null);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Failed to delete student",
+        description: (error as Error).message,
+      });
+      setIsDeleteDialogOpen(false);
+      setDeletingStudentId(null);
+    }
   };
 
   return (
@@ -122,7 +160,12 @@ export default function StudentManagementPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {students.length === 0 ? (
+          {isLoading ? (
+            <div className="flex justify-center items-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="ml-2 text-muted-foreground">Loading students...</p>
+            </div>
+          ) : students.length === 0 ? (
             <p className="text-center text-muted-foreground py-8">
               No students found. Click "Add New Student" to get started.
             </p>
@@ -144,7 +187,7 @@ export default function StudentManagementPage() {
                     <TableCell>{student.email}</TableCell>
                     <TableCell>{student.grade}</TableCell>
                     <TableCell>
-                      {format(parseISO(student.dateOfBirth), 'PPP')}
+                      {student.dateOfBirth ? format(parseISO(student.dateOfBirth), 'PPP') : 'N/A'}
                     </TableCell>
                     <TableCell className="text-right space-x-2">
                       <Button variant="outline" size="icon" onClick={() => handleOpenEditDialog(student)} aria-label="Edit student">
@@ -176,7 +219,7 @@ export default function StudentManagementPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the student's record.
+              This action cannot be undone. This will permanently delete the student's record from the database.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
