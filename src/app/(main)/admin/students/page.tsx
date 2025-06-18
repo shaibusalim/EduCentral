@@ -30,7 +30,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type { StudentFormData } from '@/components/admin/students/StudentForm';
-import { getStudents, addStudentToFirestore, updateStudentInFirestore, deleteStudentFromFirestore } from '@/services/studentService';
+import { getStudents, updateStudentInFirestore, deleteStudentFromFirestore } from '@/services/studentService';
+// Removed addStudentToFirestore import here as AddStudentDialog handles the full creation.
 
 export default function StudentManagementPage() {
   const [students, setStudents] = React.useState<Student[]>([]);
@@ -61,35 +62,25 @@ export default function StudentManagementPage() {
     fetchStudents();
   }, [fetchStudents]);
 
-  const handleAddStudent = async (newStudentData: Omit<Student, 'id'>) => {
-    try {
-      await addStudentToFirestore(newStudentData);
-      toast({
-        title: "Student Added",
-        description: `${newStudentData.firstName} ${newStudentData.lastName} has been successfully added.`,
-      });
-      fetchStudents(); // Refresh list
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Failed to add student",
-        description: (error as Error).message,
-      });
-    }
+  // This handler is simplified as AddStudentDialog now manages its own logic including Firestore.
+  const handleStudentAdded = () => {
+    fetchStudents(); // Just refresh the list
   };
 
   const handleOpenEditDialog = (student: Student) => {
     setEditingStudent(student);
     setIsEditDialogOpen(true);
   };
-
-  const handleUpdateStudent = async (updatedStudentFormData: StudentFormData) => {
+  
+  // StudentFormData for edit will not include password.
+  // The StudentForm will conditionally hide the password field in edit mode.
+  const handleUpdateStudent = async (updatedStudentFormData: Omit<StudentFormData, 'password'>) => {
     if (!editingStudent) return;
 
-    const dataForService: Omit<Student, 'id'> = {
+    // Data for service doesn't include email (can't change) or password (not edited here)
+    const dataForService: Omit<Student, 'id' | 'email'> = {
         firstName: updatedStudentFormData.firstName,
         lastName: updatedStudentFormData.lastName,
-        email: updatedStudentFormData.email,
         grade: updatedStudentFormData.grade,
         dateOfBirth: format(updatedStudentFormData.dateOfBirth, "yyyy-MM-dd"),
     };
@@ -100,7 +91,7 @@ export default function StudentManagementPage() {
         title: "Student Updated",
         description: `${dataForService.firstName} ${dataForService.lastName}'s details have been updated.`,
       });
-      fetchStudents(); // Refresh list
+      fetchStudents(); 
       setIsEditDialogOpen(false);
       setEditingStudent(null);
     } catch (error) {
@@ -121,18 +112,21 @@ export default function StudentManagementPage() {
     if (!deletingStudentId) return;
     const studentToDelete = students.find(s => s.id === deletingStudentId);
     try {
+      // Deleting from 'students' collection.
+      // Actual Firebase Auth user deletion and 'users' role deletion would be separate, more complex operations.
+      // For now, we only delete the student profile.
       await deleteStudentFromFirestore(deletingStudentId);
       toast({
-        title: "Student Deleted",
-        description: `${studentToDelete?.firstName || 'Student'} has been removed.`,
+        title: "Student Profile Deleted",
+        description: `${studentToDelete?.firstName || 'Student'}'s profile has been removed. Their auth account may still exist.`,
       });
-      fetchStudents(); // Refresh list
+      fetchStudents(); 
       setIsDeleteDialogOpen(false);
       setDeletingStudentId(null);
     } catch (error) {
       toast({
         variant: "destructive",
-        title: "Failed to delete student",
+        title: "Failed to delete student profile",
         description: (error as Error).message,
       });
       setIsDeleteDialogOpen(false);
@@ -146,7 +140,7 @@ export default function StudentManagementPage() {
         title="Student Management"
         subtitle="Add, edit, and manage student profiles and information."
       >
-        <AddStudentDialog onStudentAdded={handleAddStudent}>
+        <AddStudentDialog onStudentAdded={handleStudentAdded}>
           <Button className="bg-accent hover:bg-accent/90 text-accent-foreground">
             <PlusCircle className="mr-2 h-4 w-4" /> Add New Student
           </Button>
@@ -219,13 +213,13 @@ export default function StudentManagementPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the student's record from the database.
+              This action will delete the student's profile. Deleting their login account and role record are separate administrative tasks.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setDeletingStudentId(null)}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDeleteStudent} className="bg-destructive hover:bg-destructive/90">
-              Delete
+              Delete Profile
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -233,4 +227,3 @@ export default function StudentManagementPage() {
     </div>
   );
 }
-

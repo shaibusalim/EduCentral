@@ -37,6 +37,7 @@ export const studentFormSchema = z.object({
   firstName: z.string().min(2, "First name must be at least 2 characters."),
   lastName: z.string().min(2, "Last name must be at least 2 characters."),
   email: z.string().email("Invalid email address."),
+  password: z.string().min(6, "Initial password must be at least 6 characters."),
   grade: z.string().min(1, "Grade is required."),
   dateOfBirth: z.date({
     required_error: "Date of birth is required.",
@@ -50,17 +51,19 @@ interface StudentFormProps {
   onCancel: () => void;
   defaultValues?: Partial<StudentFormData>;
   isLoading?: boolean;
+  isEditMode?: boolean; // To conditionally show password field
 }
 
 const grades = Array.from({ length: 12 }, (_, i) => `Grade ${i + 1}`);
 
-export function StudentForm({ onSubmit, onCancel, defaultValues, isLoading }: StudentFormProps) {
+export function StudentForm({ onSubmit, onCancel, defaultValues, isLoading, isEditMode = false }: StudentFormProps) {
   const form = useForm<StudentFormData>({
     resolver: zodResolver(studentFormSchema),
     defaultValues: {
       firstName: '',
       lastName: '',
       email: '',
+      password: '',
       grade: '',
       ...defaultValues,
       dateOfBirth: defaultValues?.dateOfBirth ? new Date(defaultValues.dateOfBirth) : undefined,
@@ -105,12 +108,29 @@ export function StudentForm({ onSubmit, onCancel, defaultValues, isLoading }: St
             <FormItem>
               <FormLabel>Email</FormLabel>
               <FormControl>
-                <Input type="email" placeholder="john.doe@example.com" {...field} />
+                <Input type="email" placeholder="john.doe@example.com" {...field} disabled={isEditMode} />
               </FormControl>
+              {isEditMode && <FormDescription>Email cannot be changed after creation.</FormDescription>}
               <FormMessage />
             </FormItem>
           )}
         />
+        {!isEditMode && (
+            <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                <FormItem>
+                    <FormLabel>Initial Password</FormLabel>
+                    <FormControl>
+                    <Input type="password" placeholder="Set an initial password" {...field} />
+                    </FormControl>
+                    <FormDescription>Min. 6 characters. Student should change this on first login.</FormDescription>
+                    <FormMessage />
+                </FormItem>
+                )}
+            />
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField
             control={form.control}
@@ -183,7 +203,7 @@ export function StudentForm({ onSubmit, onCancel, defaultValues, isLoading }: St
             Cancel
           </Button>
           <Button type="submit" disabled={isLoading} className="bg-accent hover:bg-accent/90 text-accent-foreground">
-            {isLoading ? 'Saving...' : 'Save Student'}
+            {isLoading ? 'Saving...' : (isEditMode ? 'Save Changes' : 'Add Student')}
           </Button>
         </div>
       </form>

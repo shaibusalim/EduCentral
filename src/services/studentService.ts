@@ -4,9 +4,9 @@
 import { db } from '@/lib/firebase';
 import {
   collection,
-  addDoc,
-  getDocs,
   doc,
+  setDoc, // Changed from addDoc
+  getDocs,
   updateDoc,
   deleteDoc,
   Timestamp,
@@ -19,17 +19,20 @@ import { format, parseISO, isValid } from 'date-fns';
 
 const studentsCollectionRef = collection(db, 'students');
 
-interface StudentDocumentData {
+// This interface reflects the data structure within the 'students' collection
+interface StudentProfileDocumentData {
   firstName: string;
   lastName: string;
   email: string;
   grade: string;
-  dateOfBirth: Timestamp;
-  createdAt?: Timestamp;
+  dateOfBirth: Timestamp; // Stored as Timestamp in Firestore
+  createdAt: Timestamp; // Firestore server timestamp
+  updatedAt: Timestamp; // Firestore server timestamp
 }
 
+
 const fromFirestore = (docSnap: any): Student => {
-  const data = docSnap.data() as StudentDocumentData;
+  const data = docSnap.data(); // Student profile specific data
   let formattedDateOfBirth = '';
   if (data.dateOfBirth && data.dateOfBirth.toDate) {
     const dateObj = data.dateOfBirth.toDate();
@@ -43,7 +46,7 @@ const fromFirestore = (docSnap: any): Student => {
   }
 
   return {
-    id: docSnap.id,
+    id: docSnap.id, // This ID will be the Firebase UID
     firstName: data.firstName,
     lastName: data.lastName,
     email: data.email,
@@ -63,47 +66,55 @@ export const getStudents = async (): Promise<Student[]> => {
   }
 };
 
-export const addStudentToFirestore = async (studentData: Omit<Student, 'id'>): Promise<Student> => {
+// Modified to accept UID and use setDoc
+export const addStudentToFirestore = async (uid: string, studentProfileData: Omit<Student, 'id'>): Promise<void> => {
   try {
-    const dataToSave: Omit<StudentDocumentData, 'dateOfBirth' | 'createdAt'> & { dateOfBirth: Timestamp, createdAt: Timestamp } = {
-      firstName: studentData.firstName,
-      lastName: studentData.lastName,
-      email: studentData.email,
-      grade: studentData.grade,
-      dateOfBirth: Timestamp.fromDate(parseISO(studentData.dateOfBirth)),
+    const studentDocRef = doc(db, 'students', uid); // Use UID as document ID
+    const dataToSave: Omit<StudentProfileDocumentData, 'updatedAt'> = {
+      firstName: studentProfileData.firstName,
+      lastName: studentProfileData.lastName,
+      email: studentProfileData.email,
+      grade: studentProfileData.grade,
+      dateOfBirth: Timestamp.fromDate(parseISO(studentProfileData.dateOfBirth)),
       createdAt: serverTimestamp() as Timestamp,
+      // updatedAt will be set by Firestore on creation too
     };
-    const docRef = await addDoc(studentsCollectionRef, dataToSave);
-    return {
-      ...studentData,
-      id: docRef.id,
-    };
+    await setDoc(studentDocRef, { ...dataToSave, updatedAt: serverTimestamp() as Timestamp });
   } catch (error) {
-    console.error("Error adding student: ", error);
-    throw new Error("Failed to add student.");
+    console.error("Error adding student profile to Firestore: ", error);
+    throw new Error("Failed to add student profile.");
   }
 };
 
-export const updateStudentInFirestore = async (studentId: string, studentData: Omit<Student, 'id'>): Promise<void> => {
+// updateStudentInFirestore remains largely the same for editing profile data,
+// but it will operate on a document identified by UID.
+// Email and password changes would be handled separately via Firebase Auth methods.
+export const updateStudentInFirestore = async (studentId: string, studentData: Omit<Student, 'id' | 'email'>): Promise<void> => {
   try {
-    const studentDocRef = doc(db, 'students', studentId);
-    const dataToUpdate = {
-      ...studentData,
+    const studentDocRef = doc(db, 'students', studentId); // studentId is the UID
+    const dataToUpdate: Partial<Omit<StudentProfileDocumentData, 'email' | 'createdAt'>> = {
+      firstName: studentData.firstName,
+      lastName: studentData.lastName,
+      grade: studentData.grade,
       dateOfBirth: Timestamp.fromDate(parseISO(studentData.dateOfBirth)),
+      updatedAt: serverTimestamp() as Timestamp,
     };
     await updateDoc(studentDocRef, dataToUpdate);
   } catch (error) {
-    console.error("Error updating student: ", error);
-    throw new Error("Failed to update student.");
+    console.error("Error updating student profile: ", error);
+    throw new Error("Failed to update student profile.");
   }
 };
 
+// deleteStudentFromFirestore will delete the student's profile.
+// Deleting the Firebase Auth user would be a separate step, often handled by an admin or a Cloud Function.
 export const deleteStudentFromFirestore = async (studentId: string): Promise<void> => {
   try {
-    const studentDocRef = doc(db, 'students', studentId);
+    const studentDocRef = doc(db, 'students', studentId); // studentId is the UID
     await deleteDoc(studentDocRef);
+    // Note: Also need to delete from 'users' collection and Firebase Auth
   } catch (error) {
-    console.error("Error deleting student: ", error);
-    throw new Error("Failed to delete student.");
+    console.error("Error deleting student profile: ", error);
+    throw new Error("Failed to delete student profile.");
   }
 };

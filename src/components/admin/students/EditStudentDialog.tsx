@@ -17,7 +17,7 @@ interface EditStudentDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   studentToEdit: Student;
-  onStudentUpdated: (updatedStudentData: StudentFormData) => void;
+  onStudentUpdated: (updatedStudentData: Omit<StudentFormData, 'password' | 'email'>) => void; // Password and email not edited here
 }
 
 export function EditStudentDialog({ 
@@ -28,20 +28,29 @@ export function EditStudentDialog({
 }: EditStudentDialogProps) {
   const [isLoading, setIsLoading] = React.useState(false);
 
+  // The data submitted from the form might include email and password fields
+  // (though they might be disabled or not present for edit mode).
+  // We only want to pass relevant, editable fields to onStudentUpdated.
   const handleSubmit = async (data: StudentFormData) => {
     setIsLoading(true);
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    onStudentUpdated(data);
+    // Exclude email and password from the data passed for update
+    const { email, password, ...editableData } = data;
+    
+    onStudentUpdated(editableData);
     setIsLoading(false);
-    onOpenChange(false); // Close dialog on successful update
+    onOpenChange(false); 
   };
 
-  // Ensure defaultValues are correctly formatted for the form, especially the date
-  const defaultValuesForForm = {
+  // Ensure defaultValues are correctly formatted for the form
+  // For edit mode, password should not be pre-filled or editable through this form.
+  // Email is shown but disabled.
+  const defaultValuesForForm: Partial<StudentFormData> = {
     ...studentToEdit,
     dateOfBirth: studentToEdit.dateOfBirth ? parseISO(studentToEdit.dateOfBirth) : new Date(),
+    password: '', // Explicitly clear password for edit form
   };
 
 
@@ -51,7 +60,7 @@ export function EditStudentDialog({
         <DialogHeader>
           <DialogTitle>Edit Student Details</DialogTitle>
           <DialogDescription>
-            Update the student's information below.
+            Update the student's profile information below. Email cannot be changed. Password is managed separately.
           </DialogDescription>
         </DialogHeader>
         <StudentForm 
@@ -59,6 +68,7 @@ export function EditStudentDialog({
             onCancel={() => onOpenChange(false)}
             defaultValues={defaultValuesForForm}
             isLoading={isLoading}
+            isEditMode={true} // Indicate edit mode to the form
         />
       </DialogContent>
     </Dialog>
