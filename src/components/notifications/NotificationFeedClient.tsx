@@ -2,23 +2,16 @@
 "use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { BellRing, AlertTriangle, Info, PlusCircle } from "lucide-react";
+import { BellRing, AlertTriangle, Info, PlusCircle, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { NotificationItem, NotificationType } from '@/types';
 import { useAppContext } from "@/contexts/AppContext";
 import { AddNotificationDialog } from "./AddNotificationDialog";
 import type { NotificationFormData } from "./NotificationForm";
 import { useToast } from "@/hooks/use-toast";
-
-const mockNotificationsData: NotificationItem[] = [
-  { id: '1', title: 'Upcoming School Closure', description: 'School will be closed on Oct 26th for a regional holiday.', type: 'alert', date: new Date(2023, 9, 20).toISOString(), read: false },
-  { id: '2', title: 'Parent-Teacher Meeting Reminder', description: 'Scheduled for Nov 5th. Please confirm your attendance.', type: 'info', date: new Date(2023, 9, 18).toISOString(), read: true },
-  { id: '3', title: 'New Sports Equipment Arrived!', description: 'Check out the new basketballs and footballs in the gym.', type: 'announcement', date: new Date(2023, 9, 15).toISOString(), read: false },
-  { id: '4', title: 'Fee Payment Overdue', description: 'Your term fee payment is overdue. Please pay by Oct 30th.', type: 'alert', date: new Date(2023, 9, 12).toISOString(), read: false },
-  { id: '5', title: 'Library Books Return', description: 'All borrowed library books must be returned by the end of this week.', type: 'info', date: new Date(2023, 9, 10).toISOString(), read: true },
-];
+import { getNotifications, addNotificationToFirestore } from "@/services/notificationService";
 
 const NotificationIcon = ({ type }: { type: NotificationType }) => {
   switch (type) {
@@ -30,9 +23,31 @@ const NotificationIcon = ({ type }: { type: NotificationType }) => {
 };
 
 export function NotificationFeedClient() {
-  const [notifications, setNotifications] = useState<NotificationItem[]>(mockNotificationsData);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const { role } = useAppContext();
   const { toast } = useToast();
+
+  const fetchNotifications = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const fetchedNotifications = await getNotifications();
+      setNotifications(fetchedNotifications.map(n => ({...n, read: n.read || false }))); // Ensure 'read' is initialized
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Failed to load notifications",
+        description: (error as Error).message || "Could not fetch notification data.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    fetchNotifications();
+  }, [fetchNotifications]);
+
 
   const markAsRead = (id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
@@ -42,20 +57,21 @@ export function NotificationFeedClient() {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
   
-  const handleAddNotification = (data: NotificationFormData) => {
-    const newNotification: NotificationItem = {
-      id: `notif-${Date.now().toString()}`,
-      title: data.title,
-      description: data.description,
-      type: data.type as NotificationType,
-      date: new Date().toISOString(),
-      read: false, 
-    };
-    setNotifications(prev => [newNotification, ...prev]);
-    toast({
-      title: "Notification Created",
-      description: `"${data.title}" has been posted.`,
-    });
+  const handleAddNotification = async (data: NotificationFormData) => {
+    try {
+      await addNotificationToFirestore(data);
+      toast({
+        title: "Notification Created",
+        description: `"${data.title}" has been posted.`,
+      });
+      fetchNotifications(); // Refresh list
+    } catch (error) {
+       toast({
+        variant: "destructive",
+        title: "Failed to create notification",
+        description: (error as Error).message,
+      });
+    }
   };
 
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -79,7 +95,12 @@ export function NotificationFeedClient() {
           )}
         </div>
       </div>
-      {notifications.length === 0 ? (
+      {isLoading ? (
+        <div className="flex justify-center items-center py-8">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="ml-2 text-muted-foreground">Loading notifications...</p>
+        </div>
+      ) : notifications.length === 0 ? (
         <Card>
           <CardContent className="p-6 text-center text-muted-foreground">
             No new notifications.
@@ -92,7 +113,7 @@ export function NotificationFeedClient() {
               <NotificationIcon type={notification.type} />
               <div className="flex-1">
                 <CardTitle className="text-lg">{notification.title}</CardTitle>
-                <CardDescription className="text-xs text-muted-foreground">{new Date(notification.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</CardDescription>
+                <CardDescription className="text-xs text-muted-foreground">{new Date(notification.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</CardDescription>
               </div>
               {!notification.read && (
                 <Button variant="ghost" size="sm" onClick={() => markAsRead(notification.id)}>Mark as read</Button>
