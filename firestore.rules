@@ -4,127 +4,140 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions to check user roles
-    function isUserRole(targetRole) {
-      let userDocPath = /databases/$(database)/documents/users/$(request.auth.uid);
-      return request.auth != null &&
-             exists(userDocPath) &&
-             get(userDocPath).data.role == targetRole;
+    // Helper functions
+    function isUserAuthenticated() {
+      return request.auth != null;
     }
 
-    function isAdmin() { return isUserRole('admin'); }
-    function isTeacher() { return isUserRole('teacher'); }
-    function isStudent() { return isUserRole('student'); }
-    function isParent() { return isUserRole('parent'); }
-
-    // Helper function to check if role is being changed (for updates)
-    function isNotChangingRole(updatedData) {
-      // If 'role' is not in updatedData, it's not being changed.
-      // If 'role' is in updatedData, it must be the same as the existing role.
-      return !('role' in updatedData) || updatedData.role == resource.data.role;
+    // Function to check if the requesting user is the owner of the document
+    function isOwner(userId) {
+      return request.auth.uid == userId;
     }
 
-    // Users collection:
+    // Function to check if the user has an 'admin' role
+    // This requires a read to the user's own document in the 'users' collection.
+    // Ensure the rules for /users/{userId} allow this read for the user themselves.
+    function isAdmin() {
+      return isUserAuthenticated() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Function to check if the user has a 'teacher' role
+    function isTeacher() {
+      return isUserAuthenticated() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+    }
+
+    // Function to check if the user has a 'student' role
+    function isStudent() {
+      return isUserAuthenticated() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
+    }
+
+    // Function to check if the user has a 'parent' role
+    function isParent() {
+      return isUserAuthenticated() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'parent';
+    }
+
+    // Rules for the 'users' collection (stores user roles and basic info)
     match /users/{userId} {
-      // Rule 1: Allow an authenticated user to read their own document.
-      allow read: if request.auth != null && request.auth.uid == userId;
-      // Rule 2: Allow an admin to read any user document. (This is additive to Rule 1)
-      allow read: if request.auth != null && isAdmin();
+      // Allow a user to read their own document.
+      // Allow an admin to read any user document.
+      allow get: if isUserAuthenticated() && (isOwner(userId) || isAdmin());
 
-      // Only admin can create user documents (as per current app flow)
-      allow create: if request.auth != null && isAdmin();
-      // Users can update their own document (but not their role, unless they are an admin)
-      // Admins can update any user document (including roles)
-      allow update: if request.auth != null && (
-                      (request.auth.uid == userId && isNotChangingRole(request.resource.data)) || isAdmin()
-                    );
+      // Admins create user documents during onboarding.
+      allow create: if isAdmin() &&
+                       request.resource.data.role in ['student', 'teacher', 'parent', 'admin'] &&
+                       'email' in request.resource.data &&
+                       request.resource.data.email != null; // Ensure email is provided
+
+      // Users can update their own document (e.g., display name, photoURL) but NOT their role.
+      // Admins can update any field, including the role.
+      allow update: if isUserAuthenticated() &&
+                       (
+                         (isOwner(userId) && !('role' in request.resource.data)) || // Owner updating non-role fields
+                         (isOwner(userId) && request.resource.data.role == resource.data.role) || // Owner "updating" role to the same value (effectively no change)
+                         isAdmin() // Admin can update anything
+                       );
+
       // Only admins can delete user documents.
-      allow delete: if request.auth != null && isAdmin();
+      allow delete: if isAdmin();
+
+      // Listing users: only admins should be able to list all users.
+      allow list: if isAdmin();
     }
 
-    // Students collection
+    // Rules for 'students' collection (student profiles)
     match /students/{studentId} {
-      allow read: if request.auth != null && (
-                    isAdmin() ||
-                    isTeacher() ||
-                    (isStudent() && request.auth.uid == studentId) ||
-                    (isParent() && isChildOfParent(studentId)) // Assumes isChildOfParent correctly checks linkage
-                  );
-      allow create, update: if request.auth != null && isAdmin();
-      allow delete: if request.auth != null && isAdmin();
+      allow read: if isUserAuthenticated() && (isAdmin() || isTeacher() || (isOwner(studentId) && isStudent()) || isParent()); // Parent rule needs refinement for specific child
+      allow create, update, delete: if isAdmin();
+      // Students might update parts of their own profile in the future
+      // allow update: if isAdmin() || (isOwner(studentId) && isStudent() && incomingDataOnlyAllowsCertainFields());
     }
 
-    // Teachers collection
+    // Rules for 'teachers' collection (teacher profiles)
     match /teachers/{teacherId} {
-      allow read: if request.auth != null && (
-                    isAdmin() ||
-                    (isTeacher() && request.auth.uid == teacherId)
-                  );
-      allow create, update: if request.auth != null && isAdmin();
-      allow delete: if request.auth != null && isAdmin();
+      allow read: if isUserAuthenticated() && (isAdmin() || isTeacher()); // Teachers can see other teacher profiles for collaboration if needed, or restrict to own.
+      // allow read: if isAdmin() || (isOwner(teacherId) && isTeacher()); // More restrictive: only own or admin
+      allow create, update, delete: if isAdmin();
     }
 
-    // Classes collection
+    // Rules for 'classes' collection
     match /classes/{classId} {
-      allow read: if request.auth != null && (isAdmin() || isTeacher());
-      allow create, update, delete: if request.auth != null && isAdmin();
+      allow read: if isUserAuthenticated(); // All authenticated users can see class lists
+      allow create, update, delete: if isAdmin();
     }
 
-    // Subjects collection
+    // Rules for 'subjects' collection
     match /subjects/{subjectId} {
-      allow read: if request.auth != null && (isAdmin() || isTeacher());
-      allow create, update, delete: if request.auth != null && isAdmin();
+      allow read: if isUserAuthenticated(); // All authenticated users can see subject lists
+      allow create, update, delete: if isAdmin();
     }
 
-    // Notifications collection
+    // Rules for 'notifications' collection
     match /notifications/{notificationId} {
-      allow read: if request.auth != null; // All authenticated users can read notifications
-      allow create, update, delete: if request.auth != null && isAdmin();
+      allow read: if isUserAuthenticated(); // All authenticated users can read notifications
+      allow create: if isAdmin(); // Only admins can create notifications
+      allow update, delete: if isAdmin(); // Or perhaps make them immutable by not allowing update/delete
     }
 
-    // attendanceRecords collection
-    // Note: request.resource.data.studentId is used for read security on specific records
+    // Rules for 'attendanceRecords' collection
     match /attendanceRecords/{recordId} {
-      allow read: if request.auth != null && (
+      allow read: if isUserAuthenticated() && (
                     isAdmin() ||
-                    isTeacher() || // Teachers might need to list attendance for their classes
-                    (isStudent() && request.resource.data.studentId == request.auth.uid) ||
-                    (isParent() && isChildOfParent(request.resource.data.studentId))
+                    isTeacher() || // Teachers need to read attendance for their classes
+                    (isStudent() && resource.data.studentId == request.auth.uid) || // Student reads own attendance
+                    isParent() // Parent access needs to be tied to their specific child(ren)
                   );
-      // For list operations (querying multiple records), you might need broader list access for teachers
-      // e.g., allow list: if isTeacher() && request.query.filters involve their classId; (more complex)
-      allow create, update: if request.auth != null && (isAdmin() || isTeacher());
-      allow delete: if request.auth != null && isAdmin();
+      allow create, update: if isUserAuthenticated() && (isAdmin() || isTeacher()); // Teachers and admins can mark/update attendance
+      allow delete: if isAdmin();
     }
 
-    // gradeRecords collection
+    // Rules for 'gradeRecords' collection
     match /gradeRecords/{recordId} {
-      allow read: if request.auth != null && (
+      allow read: if isUserAuthenticated() && (
                     isAdmin() ||
-                    isTeacher() ||
-                    (isStudent() && request.resource.data.studentId == request.auth.uid) ||
-                    (isParent() && isChildOfParent(request.resource.data.studentId))
+                    isTeacher() || // Teachers need to read grades for their students
+                    (isStudent() && resource.data.studentId == request.auth.uid) || // Student reads own grades
+                    isParent() // Parent access needs to be tied to their specific child(ren)
                   );
-      allow create, update: if request.auth != null && (isAdmin() || isTeacher());
-      allow delete: if request.auth != null && isAdmin();
+      allow create, update: if isUserAuthenticated() && (isAdmin() || isTeacher()); // Teachers and admins can enter/update grades
+      allow delete: if isAdmin();
     }
 
-    // feeRecords collection
+     // Rules for 'feeRecords' collection
     match /feeRecords/{feeId} {
-      allow read: if request.auth != null && (
+      allow read: if isUserAuthenticated() && (
                     isAdmin() ||
-                    (isParent() && isChildOfParent(request.resource.data.studentId))
+                    (isParent() && resource.data.studentId == "student123") // TODO: Replace "student123" with actual child ID check
                   );
-      allow create, update, delete: if request.auth != null && isAdmin();
-    }
-
-    // Placeholder for parent-child relationship check
-    // This needs actual implementation based on your data structure for linking parents to children
-    function isChildOfParent(studentIdFromRecord) {
-      // Example: return exists(/databases/$(database)/documents/parents/$(request.auth.uid)/children/$(studentIdFromRecord));
-      // Or: return get(/databases/$(database)/documents/students/$(studentIdFromRecord)).data.parentUids[request.auth.uid] == true;
-      // For now, returning true if user is a parent for testing. THIS IS INSECURE FOR PRODUCTION.
-      return isParent(); // REPLACE WITH ACTUAL SECURE LOGIC
+      // Generally, only admins should create/update/delete fee records
+      allow create, update, delete: if isAdmin();
     }
   }
 }

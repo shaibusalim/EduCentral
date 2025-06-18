@@ -9,18 +9,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { UserRole } from '@/contexts/AppContext';
 import { useAppContext } from '@/contexts/AppContext';
 import Image from 'next/image';
-import { Building, LogIn, Loader2, UserCog } from 'lucide-react';
+import { Building, LogIn, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
-import { getUserRole } from '@/services/userService'; // setUserRole might not be needed here anymore
+import { getUserRole } from '@/services/userService';
 
-const availableRoles: UserRole[] = ['admin', 'teacher', 'student', 'parent'];
+const availableRoles: Exclude<UserRole, null>[] = ['admin', 'teacher', 'student', 'parent'];
 
 export default function RoleSelectorClient() {
-  const [selectedRole, setSelectedRole] = useState<UserRole | ''>(''); // Role selected in the sign-in form
+  const [selectedRole, setSelectedRole] = useState<UserRole | ''>(''); 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoadingAuthAction, setIsLoadingAuthAction] = useState(false);
@@ -60,12 +60,12 @@ export default function RoleSelectorClient() {
           toast({
             variant: "destructive",
             title: "Sign In Failed",
-            description: "Account not fully configured. Please contact an administrator.",
+            description: "Account role not found or not configured. Please contact an administrator.",
           });
           // Optionally, sign out the user here if Firebase auth succeeded but Firestore setup is missing
           // await auth.signOut(); 
         } else if (actualRoleFromFirestore === selectedRole) {
-          setRole(actualRoleFromFirestore); // This updates AppContext, which might also write to Firestore via userService
+          setRole(actualRoleFromFirestore); 
           toast({
             title: "Signed In Successfully",
             description: `Welcome, ${actualRoleFromFirestore}! Redirecting to dashboard...`,
@@ -81,7 +81,6 @@ export default function RoleSelectorClient() {
           // await auth.signOut();
         }
       } else {
-        // Should not happen if signInWithEmailAndPassword succeeds without error, but good to have a fallback
          toast({ variant: "destructive", title: "Sign In Failed", description: "Could not retrieve user details after sign in." });
       }
     } catch (error: any) {
@@ -102,6 +101,13 @@ export default function RoleSelectorClient() {
     }
   };
   
+  useEffect(() => {
+    if (!isLoadingUser && authUser && role) {
+      router.push('/dashboard');
+    }
+  }, [isLoadingUser, authUser, role, router]);
+
+
   if (isLoadingUser) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-background to-primary/10 p-4">
@@ -110,9 +116,9 @@ export default function RoleSelectorClient() {
       </div>
     );
   }
-
-  // If user is authenticated AND has a role, AuthenticatedLayout should redirect.
-  // This component shows if user is not auth'd, or auth'd but role verification failed/pending.
+  
+  // If user is authenticated AND has a role, the useEffect above should redirect.
+  // This form shows if user is not authenticated, or (in rare cases) authenticated but role fetch failed.
   if (authUser && role) {
      return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-background to-primary/10 p-4">
@@ -121,6 +127,7 @@ export default function RoleSelectorClient() {
       </div>
     );
   }
+
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-background to-primary/10 p-4">
@@ -182,7 +189,7 @@ export default function RoleSelectorClient() {
                   </SelectContent>
                 </Select>
             </div>
-            <Button type="submit" disabled={isLoadingAuthAction} className="w-full text-lg py-6 bg-accent hover:bg-accent/90 text-accent-foreground">
+            <Button type="submit" disabled={isLoadingAuthAction || !selectedRole} className="w-full text-lg py-6 bg-accent hover:bg-accent/90 text-accent-foreground">
               {isLoadingAuthAction ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <LogIn className="mr-2 h-5 w-5" />}
               {isLoadingAuthAction ? 'Signing In...' : 'Sign In'}
             </Button>
