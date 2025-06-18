@@ -9,48 +9,27 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { UserRole } from '@/contexts/AppContext';
 import { useAppContext } from '@/contexts/AppContext';
 import Image from 'next/image';
-import { Building, LogIn, UserPlus, ShieldCheck, Loader2, UserCog } from 'lucide-react';
+import { Building, LogIn, Loader2, UserCog } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
-import { setUserRole as saveUserRoleToFirestore } from '@/services/userService';
+import { getUserRole } from '@/services/userService'; // setUserRole might not be needed here anymore
 
 const availableRoles: UserRole[] = ['admin', 'teacher', 'student', 'parent'];
 
 export default function RoleSelectorClient() {
-  const [selectedRole, setSelectedRole] = useState<UserRole | ''>(''); // For post-auth role selection
-  const [signUpRole, setSignUpRole] = useState<UserRole | ''>(''); // For role selection during sign-up
+  const [selectedRole, setSelectedRole] = useState<UserRole | ''>(''); // Role selected in the sign-in form
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoadingAuthAction, setIsLoadingAuthAction] = useState(false);
-  const [isSignUpMode, setIsSignUpMode] = useState(false);
 
   const router = useRouter();
   const { authUser, role, setRole, isLoadingUser } = useAppContext();
   const { toast } = useToast();
 
-  const handleProceedWithRole = () => {
-    if (selectedRole && authUser) {
-      setRole(selectedRole as UserRole); // AppContext handles saving to Firestore
-      router.push('/dashboard');
-    } else if (!authUser) {
-      toast({
-        variant: "destructive",
-        title: "Authentication Required",
-        description: "Please sign in or sign up first.",
-      });
-    } else if (!selectedRole) {
-       toast({
-        variant: "destructive",
-        title: "Role Selection Required",
-        description: "Please select a role to continue.",
-      });
-    }
-  };
-
-  const handleAuthAction = async (event: React.FormEvent) => {
+  const handleSignIn = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!email || !password) {
       toast({
@@ -60,44 +39,63 @@ export default function RoleSelectorClient() {
       });
       return;
     }
-
-    if (isSignUpMode && !signUpRole) {
+    if (!selectedRole) {
       toast({
         variant: "destructive",
-        title: "Role Required for Sign Up",
-        description: "Please select a role to create your account.",
+        title: "Role Selection Required",
+        description: "Please select your role to sign in.",
       });
       return;
     }
 
     setIsLoadingAuthAction(true);
     try {
-      if (isSignUpMode) {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const newUser = userCredential.user;
-        await saveUserRoleToFirestore(newUser.uid, newUser.email, signUpRole as UserRole);
-        // setRole(signUpRole as UserRole); // AppContext's onAuthStateChanged will pick up the role from Firestore
-        toast({
-          title: "Account Created",
-          description: "You've successfully signed up! Redirecting to dashboard...",
-        });
-        router.push('/dashboard'); 
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const firebaseUser = userCredential.user;
+
+      if (firebaseUser) {
+        const actualRoleFromFirestore = await getUserRole(firebaseUser.uid);
+
+        if (!actualRoleFromFirestore) {
+          toast({
+            variant: "destructive",
+            title: "Sign In Failed",
+            description: "Account not fully configured. Please contact an administrator.",
+          });
+          // Optionally, sign out the user here if Firebase auth succeeded but Firestore setup is missing
+          // await auth.signOut(); 
+        } else if (actualRoleFromFirestore === selectedRole) {
+          setRole(actualRoleFromFirestore); // This updates AppContext, which might also write to Firestore via userService
+          toast({
+            title: "Signed In Successfully",
+            description: `Welcome, ${actualRoleFromFirestore}! Redirecting to dashboard...`,
+          });
+          router.push('/dashboard');
+        } else {
+          toast({
+            variant: "destructive",
+            title: "Sign In Failed",
+            description: "Incorrect role selected for this account. Please verify your role and try again.",
+          });
+           // Optionally, sign out the user here as well to prevent session confusion
+          // await auth.signOut();
+        }
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
-        toast({
-          title: "Signed In",
-          description: "Successfully signed in!",
-        });
-        // AppContext.onAuthStateChanged handles setting authUser.
-        // If role exists in Firestore, AuthenticatedLayout handles redirect via AppContext.
-        // Otherwise, user stays on this page (authUser is set, role is null) for role selection.
+        // Should not happen if signInWithEmailAndPassword succeeds without error, but good to have a fallback
+         toast({ variant: "destructive", title: "Sign In Failed", description: "Could not retrieve user details after sign in." });
       }
     } catch (error: any) {
-      console.error(`${isSignUpMode ? "Sign up" : "Sign in"} error:`, error);
+      console.error("Sign in error:", error);
+      let errorMessage = "An unexpected error occurred.";
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+        errorMessage = "Invalid email or password. Please try again.";
+      } else {
+        errorMessage = error.message || errorMessage;
+      }
       toast({
         variant: "destructive",
-        title: `${isSignUpMode ? "Sign Up" : "Sign In"} Failed`,
-        description: error.message || "An unexpected error occurred.",
+        title: "Sign In Failed",
+        description: errorMessage,
       });
     } finally {
       setIsLoadingAuthAction(false);
@@ -114,7 +112,7 @@ export default function RoleSelectorClient() {
   }
 
   // If user is authenticated AND has a role, AuthenticatedLayout should redirect.
-  // This component should only show content if user is not auth'd, or auth'd but no role.
+  // This component shows if user is not auth'd, or auth'd but role verification failed/pending.
   if (authUser && role) {
      return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-background to-primary/10 p-4">
@@ -129,106 +127,70 @@ export default function RoleSelectorClient() {
       <Card className="w-full max-w-md shadow-2xl">
         <CardHeader className="text-center">
           <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-primary">
-            { authUser ? <UserCog size={40} /> : <Building size={40} /> }
+            <Building size={40} />
           </div>
           <CardTitle className="font-headline text-3xl font-bold text-primary">
-            {authUser && !role ? "Select Your Role" : (isSignUpMode ? "Create Your EduCentral Account" : "Welcome to EduCentral")}
+            Welcome to EduCentral
           </CardTitle>
           <CardDescription className="text-muted-foreground">
-            {authUser && !role ? "Please select your role to proceed to the dashboard." : (isSignUpMode ? "Fill in your details and choose your role." : "Sign in to access your dashboard.")}
+            Sign in to access your dashboard.
           </CardDescription>
         </CardHeader>
         
-        {authUser && !role ? ( // Authenticated but no role set (e.g. existing user, sign-in without prior role)
+        <form onSubmit={handleSignIn}>
           <CardContent className="space-y-6">
-             <Image
-                src="https://placehold.co/600x400.png"
-                alt="Role selection illustration"
-                width={600}
-                height={400}
-                className="w-full h-auto rounded-lg object-cover"
-                data-ai-hint="team choice"
+            <Image
+              src="https://placehold.co/600x300.png"
+              alt="School illustration"
+              width={600}
+              height={300}
+              className="w-full h-auto rounded-lg object-cover"
+              data-ai-hint="school education"
+            />
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input 
+                id="email" 
+                type="email" 
+                placeholder="you@example.com" 
+                value={email} 
+                onChange={(e) => setEmail(e.target.value)} 
+                required 
+                disabled={isLoadingAuthAction}
               />
-            <Select value={selectedRole || ''} onValueChange={(value) => setSelectedRole(value as UserRole) }>
-              <SelectTrigger className="w-full text-base">
-                <SelectValue placeholder="Select a role" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableRoles.map(r => r && <SelectItem key={r} value={r} className="capitalize">{r}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Button onClick={handleProceedWithRole} disabled={!selectedRole || isLoadingAuthAction} className="w-full text-lg py-6 bg-accent hover:bg-accent/90 text-accent-foreground">
-              {isLoadingAuthAction ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
-              Proceed to Dashboard
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input 
+                id="password" 
+                type="password" 
+                placeholder="••••••••" 
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)} 
+                required 
+                disabled={isLoadingAuthAction}
+              />
+            </div>
+            <div className="space-y-2">
+                <Label htmlFor="selectedRole">Select Your Role</Label>
+                <Select value={selectedRole} onValueChange={(value) => setSelectedRole(value as UserRole)} disabled={isLoadingAuthAction}>
+                  <SelectTrigger id="selectedRole" className="w-full">
+                    <SelectValue placeholder="Choose your role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                      {availableRoles.map(r => r && <SelectItem key={r} value={r} className="capitalize">{r}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+            </div>
+            <Button type="submit" disabled={isLoadingAuthAction} className="w-full text-lg py-6 bg-accent hover:bg-accent/90 text-accent-foreground">
+              {isLoadingAuthAction ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <LogIn className="mr-2 h-5 w-5" />}
+              {isLoadingAuthAction ? 'Signing In...' : 'Sign In'}
             </Button>
           </CardContent>
-        ) : ( // Not authenticated - show Sign In / Sign Up form
-          <form onSubmit={handleAuthAction}>
-            <CardContent className="space-y-6">
-              <Image
-                src="https://placehold.co/600x400.png"
-                alt={isSignUpMode ? "School sign up" : "School illustration"}
-                width={600}
-                height={400}
-                className="w-full h-auto rounded-lg object-cover"
-                data-ai-hint={isSignUpMode ? "education form" : "school education"}
-              />
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input 
-                  id="email" 
-                  type="email" 
-                  placeholder="you@example.com" 
-                  value={email} 
-                  onChange={(e) => setEmail(e.target.value)} 
-                  required 
-                  disabled={isLoadingAuthAction}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input 
-                  id="password" 
-                  type="password" 
-                  placeholder="••••••••" 
-                  value={password} 
-                  onChange={(e) => setPassword(e.target.value)} 
-                  required 
-                  disabled={isLoadingAuthAction}
-                />
-              </div>
-              {isSignUpMode && (
-                <div className="space-y-2">
-                  <Label htmlFor="signUpRole">Select Your Role</Label>
-                  <Select value={signUpRole} onValueChange={(value) => setSignUpRole(value as UserRole)} disabled={isLoadingAuthAction}>
-                    <SelectTrigger id="signUpRole" className="w-full">
-                      <SelectValue placeholder="Choose your role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                       {availableRoles.map(r => r && <SelectItem key={r} value={r} className="capitalize">{r}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              <Button type="submit" disabled={isLoadingAuthAction} className="w-full text-lg py-6 bg-accent hover:bg-accent/90 text-accent-foreground">
-                {isLoadingAuthAction ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : (isSignUpMode ? <UserPlus className="mr-2 h-5 w-5" /> : <LogIn className="mr-2 h-5 w-5" />)}
-                {isLoadingAuthAction ? 'Processing...' : (isSignUpMode ? 'Sign Up' : 'Sign In')}
-              </Button>
-              <Button 
-                type="button" 
-                variant="link" 
-                onClick={() => setIsSignUpMode(!isSignUpMode)} 
-                disabled={isLoadingAuthAction}
-                className="w-full"
-              >
-                {isSignUpMode ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
-              </Button>
-            </CardContent>
-            <CardFooter className="text-center text-xs text-muted-foreground pt-4">
-              By signing in or signing up, you agree to our Terms of Service.
-            </CardFooter>
-          </form>
-        )}
+          <CardFooter className="text-center text-xs text-muted-foreground pt-4">
+            If you have trouble signing in, please contact your administrator.
+          </CardFooter>
+        </form>
       </Card>
       <p className="mt-8 text-center text-sm text-muted-foreground">
         EduCentral &copy; {new Date().getFullYear()}. Your integrated school management solution.
@@ -236,4 +198,3 @@ export default function RoleSelectorClient() {
     </div>
   );
 }
-
